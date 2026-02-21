@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ship Game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    <div id="ui-overlay">
+      <div id="hud-top">
+        <div id="health-bar-container">
+          <span class="bar-label">HP</span>
+          <div class="bar-outer"><div id="health-bar" class="bar-inner health"></div></div>
+        </div>
+        <div id="shield-bar-container">
+          <span class="bar-label">SH</span>
+          <div class="bar-outer"><div id="shield-bar" class="bar-inner shield"></div></div>
+        </div>
+        <div id="coords-display">X: 0 &nbsp; Y: 0</div>
+      </div>
+      <div id="crafting-panel" class="hidden">
+        <h2>Crafting</h2>
+        <div id="crafting-inventory"></div>
+        <hr />
+        <div id="crafting-recipes"></div>
+        <button id="close-crafting">Close [C]</button>
+      </div>
+      <div id="toolbar-container">
+        <div id="toolbar"></div>
+        <div id="toolbar-hint">Scroll or 1–8 to select &nbsp;|&nbsp; C: Crafting &nbsp;|&nbsp; Left-click: Fire</div>
+      </div>
+    </div>
+  </div>
+  <script src="dist/bundle.js"></script>
+</body>
+</html>

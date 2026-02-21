@@ -1,0 +1,12 @@
+| Ascending rarity (common → rare) | Gem |
+| --- | --- |
+| 1 | Quartz |
+| 2 | Ruby |
+| 3 | Sunstone |
+| 4 | Citrine |
+| 5 | Emerald |
+| 6 | Sapphire |
+| 7 | Iolite |
+| 8 | Amethyst |
+| 9 | Diamond |
+| 10 | Voidstone |

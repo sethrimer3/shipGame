@@ -5,6 +5,50 @@ import { Particle, FloatingText, makeFloatingText }  from './particle';
 import { Projectile } from './projectile';
 import { Player }    from './player';
 
+// ── Physics helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Resolve a ship vs asteroid circle collision using impulse physics.
+ * Mutates ship pos/vel and asteroid pos/vel in place.
+ */
+function resolveShipAsteroidCollision(
+  shipPos: Vec2, shipVel: Vec2, shipRadius: number, shipMass: number,
+  asteroid: Asteroid,
+): void {
+  const c  = asteroid.centre;
+  const dx = shipPos.x - c.x;
+  const dy = shipPos.y - c.y;
+  const d  = Math.sqrt(dx * dx + dy * dy);
+  const minDist = shipRadius + asteroid.radius;
+  if (d >= minDist || d < 0.001) return; // 0.001 guard prevents divide-by-zero when centres coincide
+
+  // Collision normal: from asteroid centre toward ship
+  const nx = dx / d;
+  const ny = dy / d;
+
+  // Separate the two bodies proportional to their masses
+  const astMass   = asteroid.mass;
+  const totalMass = shipMass + astMass;
+  const overlap   = minDist - d;
+  shipPos.x      += nx * overlap * (astMass   / totalMass);
+  shipPos.y      += ny * overlap * (astMass   / totalMass);
+  asteroid.pos.x -= nx * overlap * (shipMass  / totalMass);
+  asteroid.pos.y -= ny * overlap * (shipMass  / totalMass);
+
+  // Impulse along the normal (coefficient of restitution = 0.5)
+  const e    = 0.5;
+  const dvx  = shipVel.x - asteroid.vel.x;
+  const dvy  = shipVel.y - asteroid.vel.y;
+  const vRel = dvx * nx + dvy * ny;
+  if (vRel >= 0) return; // already separating – no impulse needed
+
+  const j         = -(1 + e) * vRel / (1 / shipMass + 1 / astMass);
+  shipVel.x      += (j / shipMass) * nx;
+  shipVel.y      += (j / shipMass) * ny;
+  asteroid.vel.x -= (j / astMass)  * nx;
+  asteroid.vel.y -= (j / astMass)  * ny;
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────
 const CHUNK_SIZE      = 1200;   // world units per chunk
 const ASTEROIDS_PER_CHUNK = 4;  // asteroid attempts per chunk
@@ -199,6 +243,24 @@ export class World {
         }
       }
       chunk.asteroids = chunk.asteroids.filter(a => a.alive);
+
+      // ── Asteroid physics update ───────────────────────────────────
+      for (const asteroid of chunk.asteroids) {
+        asteroid.update(dt);
+      }
+
+      // ── Ship-asteroid collisions ──────────────────────────────────
+      for (const asteroid of chunk.asteroids) {
+        resolveShipAsteroidCollision(
+          player.pos, player.vel, player.radius, player.mass, asteroid,
+        );
+        for (const enemy of chunk.enemies) {
+          if (!enemy.alive) continue;
+          resolveShipAsteroidCollision(
+            enemy.pos, enemy.vel, enemy.radius, enemy.mass, asteroid,
+          );
+        }
+      }
 
       // ── Enemy-projectile collisions ────────────────────────────────
       for (const enemy of chunk.enemies) {

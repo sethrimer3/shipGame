@@ -229,6 +229,15 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     outputId:    'resonance_beam',
     outputQty:   1,
   },
+  {
+    id:          'placer_laser',
+    name:        'Placer Laser',
+    description: 'Right-click to place blocks from your inventory. Build walls and structures.',
+    icon:        '🧱',
+    inputs:      [{ material: Material.Iron, quantity: 4 }, { material: Material.Crystal, quantity: 1 }],
+    outputId:    'placer_laser',
+    outputQty:   1,
+  },
 ];
 
 export interface ToolbarItemDef {
@@ -236,8 +245,8 @@ export interface ToolbarItemDef {
   name:        string;
   icon:        string;
   color:       string;
-  /** 'weapon' fires projectiles; 'tool' mines blocks; 'upgrade' is passive */
-  type:        'weapon' | 'tool' | 'upgrade';
+  /** 'weapon' fires projectiles; 'tool' mines blocks; 'upgrade' is passive; 'placer' places blocks */
+  type:        'weapon' | 'tool' | 'upgrade' | 'placer';
   damage:      number;
   fireRate:    number; // shots per second
   projectileSpeed: number;
@@ -285,5 +294,10 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
     id: 'resonance_beam', name: 'Resonance Beam', icon: '💎', color: '#d0eeff',
     type: 'weapon', damage: 12, fireRate: 12, projectileSpeed: 1100,
     projectileColor: '#aaddff', projectileRadius: 2,
+  },
+  placer_laser: {
+    id: 'placer_laser', name: 'Placer Laser', icon: '🧱', color: '#2ecc71',
+    type: 'placer', damage: 0, fireRate: 3, projectileSpeed: 0,
+    projectileColor: '#2ecc71', projectileRadius: 0,
   },
 };

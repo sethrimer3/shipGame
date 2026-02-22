@@ -9,7 +9,12 @@ import { Projectile }    from './projectile';
 import { Particle, updateParticle, drawParticle, FloatingText, updateFloatingText, drawFloatingText } from './particle';
 import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
-import { len, TOOLBAR_ITEM_DEFS } from './types';
+import { len, Material, TOOLBAR_ITEM_DEFS } from './types';
+
+/** All material types in priority order for the placer laser. */
+const ALL_MATERIALS = Object.values(Material) as Material[];
+/** Default placer cooldown (seconds) when fireRate is 0. */
+const DEFAULT_PLACER_COOLDOWN = 0.33;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -34,6 +39,14 @@ class Game {
   private _paused   = false;
   private _timeSurvived  = 0;
   private _maxDistFromOrigin = 0;
+
+  /** Whether the settings panel is open. */
+  private _settingsOpen   = false;
+  private _settingsKeyHeld = false;
+  /** When true (default), WASD moves relative to ship facing. When false, WASD = world axes. */
+  private advancedMovement = true;
+  /** Cooldown for the placer laser. */
+  private _placerCooldown = 0;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -76,6 +89,22 @@ class Game {
     this.player.equipItem(0, miningLaser);
     this.toolbar.renderDOM();
 
+    // Wire up settings panel controls
+    const advMovCheckbox = document.getElementById('setting-adv-movement') as HTMLInputElement | null;
+    if (advMovCheckbox) {
+      advMovCheckbox.checked = this.advancedMovement;
+      advMovCheckbox.addEventListener('change', () => {
+        this.advancedMovement = advMovCheckbox.checked;
+      });
+    }
+    const closeSettingsBtn = document.getElementById('close-settings');
+    if (closeSettingsBtn) {
+      closeSettingsBtn.addEventListener('click', () => {
+        this._settingsOpen = false;
+        document.getElementById('settings-panel')?.classList.add('hidden');
+      });
+    }
+
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -113,6 +142,20 @@ class Game {
 
     if (this._paused) return;
 
+    // ── Settings toggle (Tab) ────────────────────────────────────────
+    if (this.input.isDown('tab') && !this._settingsKeyHeld) {
+      this._settingsOpen = !this._settingsOpen;
+      this._settingsKeyHeld = true;
+      const panel = document.getElementById('settings-panel');
+      if (panel) {
+        if (this._settingsOpen) panel.classList.remove('hidden');
+        else panel.classList.add('hidden');
+      }
+    }
+    if (!this.input.isDown('tab')) this._settingsKeyHeld = false;
+
+    if (this._settingsOpen) return; // pause game while settings open
+
     // ── Toolbar navigation ──────────────────────────────────────────
     const scroll = this.input.consumeScroll();
     if (scroll !== 0) {
@@ -137,7 +180,21 @@ class Game {
     if (this.crafting.isOpen()) return; // pause game while crafting
 
     // ── Player ─────────────────────────────────────────────────────
-    this.player.update(dt, this.toolbar.selected, this.particles, this.projectiles);
+    this.player.update(dt, this.toolbar.selected, this.advancedMovement, this.particles, this.projectiles);
+
+    // ── Placer laser (right-click) ──────────────────────────────────
+    this._placerCooldown -= dt;
+    const selectedItem = this.player.equippedItems[this.toolbar.selected];
+    if (selectedItem?.type === 'placer' && this.input.mouseRightDown && this._placerCooldown <= 0) {
+      // Find the first material the player has in inventory
+      const mat = ALL_MATERIALS.find(m => this.player.getResource(m) > 0);
+      if (mat) {
+        const worldPos = this.camera.screenToWorld(this.input.mousePos);
+        this.world.placeBlock(worldPos, mat);
+        this.player.addResource(mat, -1);
+        this._placerCooldown = selectedItem.fireRate > 0 ? 1 / selectedItem.fireRate : DEFAULT_PLACER_COOLDOWN;
+      }
+    }
 
     // ── Track survival stats ────────────────────────────────────────
     this._timeSurvived += dt;

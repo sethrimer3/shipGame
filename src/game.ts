@@ -41,11 +41,12 @@ class Game {
     if (!ctx) throw new Error('Could not get 2D canvas context');
     this.ctx = ctx;
 
+    this.camera  = new Camera();
+
     this.resize();
     window.addEventListener('resize', () => this.resize());
 
     this.input   = new InputManager(this.canvas);
-    this.camera  = new Camera();
     this.player  = new Player(this.input, this.camera);
     this.world   = new World();
     this.toolbar = new Toolbar();

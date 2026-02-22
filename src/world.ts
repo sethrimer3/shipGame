@@ -4,7 +4,7 @@ import { Enemy }     from './enemy';
 import { Particle, FloatingText, makeFloatingText }  from './particle';
 import { Projectile } from './projectile';
 import { Player }    from './player';
-import { BLOCK_SIZE } from './block';
+import { BLOCK_SIZE, Block } from './block';
 
 // ── Physics helpers ──────────────────────────────────────────────────────────
 
@@ -66,6 +66,7 @@ const GEM_CLUSTER_CHANCE     = 0.35; // probability per attempt
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
 const PICKUP_SUCTION_RADIUS = 200;  // world units where pickups accelerate toward player
 const PICKUP_LIFETIME       = 20;   // seconds before despawn
+const PICKUP_HALF_SIZE      = 5;    // half-side of pickup draw rect (world units)
 
 // ── Floating resource pickup ──────────────────────────────────────────────────
 interface ResourcePickup {
@@ -466,5 +467,41 @@ export class World {
     }
     for (const p of this.pickups) pickupPos.push({ ...p.pos });
     return { enemies, asteroids, pickups: pickupPos };
+  }
+
+  /** Returns AABB occluder quads for all active shadow-casting entities. */
+  getShadowOccluders(camPos: Vec2): { verts: Vec2[] }[] {
+    const aabb = (l: number, t: number, r: number, b: number) => ({
+      verts: [
+        { x: l, y: t }, { x: r, y: t },
+        { x: r, y: b }, { x: l, y: b },
+      ] as Vec2[],
+    });
+    const result: { verts: Vec2[] }[] = [];
+    const chunks = this._activeChunks(camPos);
+    for (const chunk of chunks) {
+      for (const asteroid of chunk.asteroids) {
+        if (!asteroid.alive) continue;
+        for (const block of asteroid.blocks as Block[]) {
+          if (!block.alive) continue;
+          const bx = asteroid.pos.x + block.col * BLOCK_SIZE;
+          const by = asteroid.pos.y + block.row * BLOCK_SIZE;
+          result.push(aabb(bx, by, bx + BLOCK_SIZE, by + BLOCK_SIZE));
+        }
+      }
+      for (const enemy of chunk.enemies) {
+        if (!enemy.alive) continue;
+        const r = enemy.radius;
+        result.push(aabb(enemy.pos.x - r, enemy.pos.y - r, enemy.pos.x + r, enemy.pos.y + r));
+      }
+    }
+    for (const p of this.pickups) {
+      result.push(aabb(p.pos.x - PICKUP_HALF_SIZE, p.pos.y - PICKUP_HALF_SIZE, p.pos.x + PICKUP_HALF_SIZE, p.pos.y + PICKUP_HALF_SIZE));
+    }
+    for (const b of this.placedBlocks) {
+      if (!b.alive) continue;
+      result.push(aabb(b.pos.x, b.pos.y, b.pos.x + BLOCK_SIZE, b.pos.y + BLOCK_SIZE));
+    }
+    return result;
   }
 }

@@ -9,7 +9,7 @@ import { Projectile }    from './projectile';
 import { Particle, updateParticle, drawParticle, FloatingText, updateFloatingText, drawFloatingText } from './particle';
 import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
-import { len, Material, TOOLBAR_ITEM_DEFS } from './types';
+import { len, Material, TOOLBAR_ITEM_DEFS, Vec2 } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -280,6 +280,27 @@ class Game {
     if (this.player.alive) this.player.draw(ctx);
 
     this.camera.end(ctx);
+
+    // ── Sun ray-tracing / shadow overlay (screen-space, after camera) ─────
+    if (this.player.alive) {
+      const occluders = this.world.getShadowOccluders(this.camera.position);
+      // Add player as occluder
+      const pr = this.player.radius;
+      occluders.push({ verts: [
+        { x: this.player.pos.x - pr, y: this.player.pos.y - pr },
+        { x: this.player.pos.x + pr, y: this.player.pos.y - pr },
+        { x: this.player.pos.x + pr, y: this.player.pos.y + pr },
+        { x: this.player.pos.x - pr, y: this.player.pos.y + pr },
+      ] as Vec2[] });
+      this.sunRenderer.drawSunRays(
+        ctx,
+        { x: 0, y: 0 },
+        canvas.width,
+        canvas.height,
+        (p: Vec2) => this.camera.worldToScreen(p),
+        occluders,
+      );
+    }
 
     // ── Minimap ────────────────────────────────────────────────────
     if (this.player.alive) this._drawMinimap(ctx);

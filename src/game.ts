@@ -6,9 +6,10 @@ import { Toolbar }       from './toolbar';
 import { CraftingSystem } from './crafting';
 import { HUD }           from './hud';
 import { Projectile }    from './projectile';
-import { Particle, updateParticle, drawParticle } from './particle';
+import { Particle, updateParticle, drawParticle, FloatingText, updateFloatingText, drawFloatingText } from './particle';
 import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
+import { len } from './types';
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -26,9 +27,13 @@ class Game {
 
   private readonly projectiles: Projectile[] = [];
   private readonly particles:   Particle[]   = [];
+  private readonly floatingTexts: FloatingText[] = [];
 
-  private lastTime = 0;
-  private gameTime = 0;
+  private lastTime  = 0;
+  private gameTime  = 0;
+  private _paused   = false;
+  private _timeSurvived  = 0;
+  private _maxDistFromOrigin = 0;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -77,7 +82,7 @@ class Game {
   private loop(timestamp: number): void {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.05); // cap at 50 ms
     this.lastTime = timestamp;
-    this.gameTime += dt;
+    if (!this._paused) this.gameTime += dt;
 
     this.update(dt);
     this.render();
@@ -87,10 +92,19 @@ class Game {
 
   // ── Update ─────────────────────────────────────────────────────────────────
   private update(dt: number): void {
+    // ── Escape: pause toggle ─────────────────────────────────────────
+    if (this.input.isDown('escape') && !this._pauseKeyHeld) {
+      this._paused = !this._paused;
+      this._pauseKeyHeld = true;
+    }
+    if (!this.input.isDown('escape')) this._pauseKeyHeld = false;
+
     if (!this.player.alive) {
       if (this.input.isDown('r')) window.location.reload();
       return;
     }
+
+    if (this._paused) return;
 
     // ── Toolbar navigation ──────────────────────────────────────────
     const scroll = this.input.consumeScroll();
@@ -118,8 +132,13 @@ class Game {
     // ── Player ─────────────────────────────────────────────────────
     this.player.update(dt, this.toolbar.selected, this.particles, this.projectiles);
 
+    // ── Track survival stats ────────────────────────────────────────
+    this._timeSurvived += dt;
+    const distFromOrigin = len(this.player.pos);
+    if (distFromOrigin > this._maxDistFromOrigin) this._maxDistFromOrigin = distFromOrigin;
+
     // ── World / enemies / collisions ────────────────────────────────
-    this.world.update(dt, this.player, this.projectiles, this.particles, this.camera.position);
+    this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position);
 
     // ── Level-up notification ────────────────────────────────────
     if (this.player.leveledUp) {
@@ -144,6 +163,11 @@ class Game {
     this.particles.splice(0, this.particles.length,
       ...this.particles.filter(p => p.lifetime > 0));
 
+    // ── Floating texts ──────────────────────────────────────────────
+    for (const f of this.floatingTexts) updateFloatingText(f, dt);
+    this.floatingTexts.splice(0, this.floatingTexts.length,
+      ...this.floatingTexts.filter(f => f.lifetime > 0));
+
     // ── Camera ─────────────────────────────────────────────────────
     this.camera.follow(this.player.pos, dt);
 
@@ -153,6 +177,7 @@ class Game {
   }
 
   private _craftingKeyHeld = false;
+  private _pauseKeyHeld    = false;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   private render(): void {
@@ -180,6 +205,9 @@ class Game {
     // Particles
     for (const p of this.particles) drawParticle(ctx, p);
 
+    // Floating damage / XP texts (world-space)
+    for (const f of this.floatingTexts) drawFloatingText(ctx, f);
+
     // Player
     if (this.player.alive) this.player.draw(ctx);
 
@@ -188,20 +216,58 @@ class Game {
     // ── Minimap ────────────────────────────────────────────────────
     if (this.player.alive) this._drawMinimap(ctx);
 
+    // ── Off-screen enemy indicators ────────────────────────────────
+    if (this.player.alive) this._drawEnemyIndicators(ctx);
+
+    // ── Speed indicator ────────────────────────────────────────────
+    if (this.player.alive) {
+      const spd = Math.round(len(this.player.vel));
+      ctx.save();
+      ctx.font      = '11px Courier New';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      // Position to the left of the minimap (SIZE=150 + MARGIN=14 + small gap)
+      ctx.fillText(`SPD ${spd}`, canvas.width - 170, canvas.height - 14);
+      ctx.restore();
+    }
+
+    // ── Pause overlay ──────────────────────────────────────────────
+    if (this._paused && this.player.alive) {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle   = '#7ecfff';
+      ctx.font        = 'bold 40px Courier New';
+      ctx.textAlign   = 'center';
+      ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2 - 10);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font      = '16px Courier New';
+      ctx.fillText('Press ESC to resume', canvas.width / 2, canvas.height / 2 + 30);
+    }
+
     // ── Game-over overlay ──────────────────────────────────────────
     if (!this.player.alive) {
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillStyle = 'rgba(0,0,0,0.70)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+
       ctx.fillStyle   = '#e74c3c';
       ctx.font        = 'bold 48px Courier New';
       ctx.textAlign   = 'center';
-      ctx.fillText('SHIP DESTROYED', canvas.width / 2, canvas.height / 2 - 20);
+      ctx.fillText('SHIP DESTROYED', cx, cy - 60);
+
       ctx.fillStyle = '#fff';
-      ctx.font      = '20px Courier New';
-      ctx.fillText(`Kills: ${this.world.kills}`, canvas.width / 2, canvas.height / 2 + 24);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.font      = '16px Courier New';
-      ctx.fillText('Press R to restart', canvas.width / 2, canvas.height / 2 + 58);
+      ctx.font      = '18px Courier New';
+      const mins = Math.floor(this._timeSurvived / 60);
+      const secs = Math.floor(this._timeSurvived % 60);
+      const timeStr = `${mins}:${String(secs).padStart(2, '0')}`;
+      ctx.fillText(`Kills: ${this.world.kills}   Level: ${this.player.level}`, cx, cy - 10);
+      ctx.fillText(`Time: ${timeStr}   Max Dist: ${Math.round(this._maxDistFromOrigin)}`, cx, cy + 22);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.font      = '14px Courier New';
+      ctx.fillText('Press R to restart', cx, cy + 66);
     }
   }
 
@@ -280,7 +346,66 @@ class Game {
     ctx.textAlign = 'center';
     ctx.fillText('N', cx, my + 9);
   }
-}
 
+  // ── Off-screen enemy indicators ────────────────────────────────────────────
+  private _drawEnemyIndicators(ctx: CanvasRenderingContext2D): void {
+    const { enemies } = this.world.getMinimapData(this.camera.position);
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const MARGIN = 24;
+    const INDICATOR_RANGE = 1600; // only show if within this world-unit range
+
+    ctx.save();
+    ctx.fillStyle   = 'rgba(231, 76, 60, 0.85)';
+    ctx.strokeStyle = 'rgba(231, 76, 60, 0.5)';
+    ctx.lineWidth   = 1;
+
+    for (const e of enemies) {
+      const dx = e.x - this.player.pos.x;
+      const dy = e.y - this.player.pos.y;
+      const worldDist = Math.sqrt(dx * dx + dy * dy);
+      if (worldDist > INDICATOR_RANGE) continue;
+
+      // Convert to screen space
+      const screen = this.camera.worldToScreen(e);
+      if (screen.x >= 0 && screen.x <= W && screen.y >= 0 && screen.y <= H) continue;
+
+      // Clamp to screen edge
+      const ang = Math.atan2(dy, dx);
+      const cos = Math.cos(ang);
+      const sin = Math.sin(ang);
+      const cx  = W / 2;
+      const cy  = H / 2;
+
+      // Find intersection with screen boundary; guard against near-zero divisor
+      const EPS = 1e-9;
+      const dxBound = Math.abs(cos) > EPS
+        ? (cos >= 0 ? (W - MARGIN - cx) : (MARGIN - cx)) / cos
+        : Infinity;
+      const dyBound = Math.abs(sin) > EPS
+        ? (sin >= 0 ? (H - MARGIN - cy) : (MARGIN - cy)) / sin
+        : Infinity;
+      const t = Math.min(dxBound, dyBound);
+      if (!isFinite(t)) continue;
+      const tx = cx + cos * t;
+      const ty = cy + sin * t;
+
+      // Draw arrow triangle
+      const SIZE = 8;
+      ctx.save();
+      ctx.translate(tx, ty);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(SIZE,       0);
+      ctx.lineTo(-SIZE * 0.6,  SIZE * 0.6);
+      ctx.lineTo(-SIZE * 0.6, -SIZE * 0.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+}
 // Start the game when the DOM is ready
 window.addEventListener('DOMContentLoaded', () => new Game());

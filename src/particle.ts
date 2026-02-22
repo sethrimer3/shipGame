@@ -1,5 +1,46 @@
 import { Vec2 } from './types';
 
+// ── Floating damage / text numbers ───────────────────────────────────────────
+export interface FloatingText {
+  pos:      Vec2;
+  vel:      Vec2;
+  text:     string;
+  color:    string;
+  lifetime: number;
+  maxLife:  number;
+}
+
+export function makeFloatingText(pos: Vec2, text: string, color: string): FloatingText {
+  return {
+    pos:      { x: pos.x, y: pos.y },
+    vel:      { x: (Math.random() - 0.5) * 20, y: -55 },
+    text,
+    color,
+    lifetime: 1.0,
+    maxLife:  1.0,
+  };
+}
+
+export function updateFloatingText(f: FloatingText, dt: number): void {
+  f.pos.x   += f.vel.x * dt;
+  f.pos.y   += f.vel.y * dt;
+  f.vel.y   *= 0.92;
+  f.lifetime -= dt;
+}
+
+export function drawFloatingText(ctx: CanvasRenderingContext2D, f: FloatingText): void {
+  const alpha = Math.max(0, f.lifetime / f.maxLife);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font        = 'bold 13px Courier New';
+  ctx.textAlign   = 'center';
+  ctx.fillStyle   = '#000';
+  ctx.fillText(f.text, f.pos.x + 1, f.pos.y + 1);
+  ctx.fillStyle   = f.color;
+  ctx.fillText(f.text, f.pos.x, f.pos.y);
+  ctx.restore();
+}
+
 export interface Particle {
   pos:      Vec2;
   vel:      Vec2;

@@ -26,6 +26,7 @@ A 2D sandbox ship game built with HTML and TypeScript.
 | **Scroll wheel** | Cycle toolbar slot |
 | **1 – 8** | Select toolbar slot directly |
 | **C** | Toggle crafting panel |
+| **ESC** | Pause / resume |
 
 ## Materials
 

@@ -15,6 +15,22 @@ import { len, Material, TOOLBAR_ITEM_DEFS, Vec2 } from './types';
 const ALL_MATERIALS = Object.values(Material) as Material[];
 /** Default placer cooldown (seconds) when fireRate is 0. */
 const DEFAULT_PLACER_COOLDOWN = 0.33;
+const MAX_PLACER_RANGE = 320;
+const DRAW_PLACE_INTERVAL = 0.045;
+
+interface PlacementBeamEffect {
+  from: Vec2;
+  to: Vec2;
+  life: number;
+  maxLife: number;
+}
+
+interface BlockLaunchEffect {
+  from: Vec2;
+  to: Vec2;
+  life: number;
+  maxLife: number;
+}
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -47,6 +63,9 @@ class Game {
   private advancedMovement = false;
   /** Cooldown for the placer laser. */
   private _placerCooldown = 0;
+  private _lastPlacedWorldPos: Vec2 | null = null;
+  private readonly _placementBeams: PlacementBeamEffect[] = [];
+  private readonly _launchEffects: BlockLaunchEffect[] = [];
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -184,21 +203,49 @@ class Game {
 
     // ── Placer laser (right-click) ──────────────────────────────────
     this._placerCooldown -= dt;
+    if (!this.input.mouseRightDown) this._lastPlacedWorldPos = null;
     if (this.input.mouseRightDown && this._placerCooldown <= 0) {
       const available = ALL_MATERIALS.find(m => this.player.getResource(m) > 0);
       if (available !== undefined) {
         const worldPos = this.camera.screenToWorld(this.input.mousePos);
-        this.world.placeBlock(worldPos, available);
-        this.player.addResource(available, -1);
+        const offset = { x: worldPos.x - this.player.pos.x, y: worldPos.y - this.player.pos.y };
+        const d = len(offset);
+        if (d <= MAX_PLACER_RANGE) {
+          const snappedPos = this.world.snapToBlockGrid(worldPos);
+          if (!this._lastPlacedWorldPos) {
+            this._tryPlaceAt(snappedPos, available);
+            this._lastPlacedWorldPos = { ...snappedPos };
+          } else {
+            const path = this._lineGridPath(this._lastPlacedWorldPos, snappedPos);
+            let lastPlaced = this._lastPlacedWorldPos;
+            for (const pos of path) {
+              const distToShip = len({ x: pos.x - this.player.pos.x, y: pos.y - this.player.pos.y });
+              if (distToShip > MAX_PLACER_RANGE) break;
+              const placed = this._tryPlaceAt(pos, available);
+              if (!placed) continue;
+              lastPlaced = { ...pos };
+              if (this.player.getResource(available) <= 0) break;
+            }
+            this._lastPlacedWorldPos = { ...lastPlaced };
+          }
+        }
         const selectedItem = this.player.equippedItems[this.toolbar.selected];
         this._placerCooldown = selectedItem?.type === 'placer' && selectedItem.fireRate > 0
-          ? 1 / selectedItem.fireRate
+          ? Math.min(1 / selectedItem.fireRate, DRAW_PLACE_INTERVAL)
           : DEFAULT_PLACER_COOLDOWN;
       } else {
         this.hud.showMessage('No materials – mine asteroids to collect resources', 2);
         this._placerCooldown = 1.5; // throttle message spam
+        this._lastPlacedWorldPos = null;
       }
     }
+
+    for (const beam of this._placementBeams) beam.life -= dt;
+    this._placementBeams.splice(0, this._placementBeams.length,
+      ...this._placementBeams.filter(beam => beam.life > 0));
+    for (const launch of this._launchEffects) launch.life -= dt;
+    this._launchEffects.splice(0, this._launchEffects.length,
+      ...this._launchEffects.filter(launch => launch.life > 0));
 
     // ── Track survival stats ────────────────────────────────────────
     this._timeSurvived += dt;
@@ -244,6 +291,36 @@ class Game {
     this.crafting.refresh();
   }
 
+  private _lineGridPath(from: Vec2, to: Vec2): Vec2[] {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy)) / 20;
+    const count = Math.max(1, Math.ceil(steps));
+    const result: Vec2[] = [];
+    const seen = new Set<string>();
+    for (let i = 1; i <= count; i++) {
+      const t = i / count;
+      const x = Math.floor((from.x + dx * t) / 20) * 20;
+      const y = Math.floor((from.y + dy * t) / 20) * 20;
+      const key = `${x},${y}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({ x, y });
+    }
+    return result;
+  }
+
+  private _tryPlaceAt(gridPos: Vec2, material: Material): boolean {
+    if (this.player.getResource(material) <= 0) return false;
+    const placed = this.world.placeBlock(gridPos, material);
+    if (!placed) return false;
+    this.player.addResource(material, -1);
+    const muzzle = this.player.getMuzzleWorldPos();
+    this._placementBeams.push({ from: muzzle, to: { x: gridPos.x + 10, y: gridPos.y + 10 }, life: 0.09, maxLife: 0.09 });
+    this._launchEffects.push({ from: muzzle, to: { x: gridPos.x, y: gridPos.y }, life: 0.12, maxLife: 0.12 });
+    return true;
+  }
+
   private _craftingKeyHeld = false;
   private _pauseKeyHeld    = false;
 
@@ -266,6 +343,32 @@ class Game {
     this.sunRenderer.draw(ctx, { x: 0, y: 0 }, 150, this.gameTime);
 
     this.world.draw(ctx, this.camera.position);
+
+    for (const beam of this._placementBeams) {
+      const ratio = Math.max(0, beam.life / beam.maxLife);
+      ctx.save();
+      ctx.globalAlpha = 0.2 + ratio * 0.4;
+      ctx.strokeStyle = '#99ddff';
+      ctx.lineWidth = 2 + ratio * 4;
+      ctx.beginPath();
+      ctx.moveTo(beam.from.x, beam.from.y);
+      ctx.lineTo(beam.to.x, beam.to.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    for (const launch of this._launchEffects) {
+      const ratio = Math.max(0, launch.life / launch.maxLife);
+      const progress = 1 - ratio;
+      const x = launch.from.x + (launch.to.x - launch.from.x) * progress;
+      const y = launch.from.y + (launch.to.y - launch.from.y) * progress;
+      const size = 4 + progress * 16;
+      ctx.save();
+      ctx.globalAlpha = 0.3 + ratio * 0.5;
+      ctx.fillStyle = '#8fd3ff';
+      ctx.fillRect(x - size / 2, y - size / 2, size, size);
+      ctx.restore();
+    }
 
     // Projectiles
     for (const p of this.projectiles) p.draw(ctx);

@@ -87,6 +87,8 @@ interface PlacedBlock {
   alive:    boolean;
 }
 
+interface GridPos { x: number; y: number }
+
 // ── Simple seeded pseudo-random (deterministic per chunk coord) ────────────
 function mulberry32(seed: number): () => number {
   return function () {
@@ -126,12 +128,23 @@ export class World {
   /** Accumulated enemy kills – could be used for score */
   kills = 0;
 
-  /** Place a block at a world position (snapped to grid) using the given material. */
-  placeBlock(worldPos: Vec2, material: Material): PlacedBlock {
+  snapToBlockGrid(worldPos: Vec2): GridPos {
     const snap = (coord: number) => Math.floor(coord / BLOCK_SIZE) * BLOCK_SIZE;
+    return { x: snap(worldPos.x), y: snap(worldPos.y) };
+  }
+
+  hasPlacedBlockAt(worldPos: Vec2): boolean {
+    const snap = this.snapToBlockGrid(worldPos);
+    return this.placedBlocks.some(b => b.alive && b.pos.x === snap.x && b.pos.y === snap.y);
+  }
+
+  /** Place a block at a world position (snapped to grid) using the given material. */
+  placeBlock(worldPos: Vec2, material: Material): PlacedBlock | null {
+    const snapped = this.snapToBlockGrid(worldPos);
+    if (this.hasPlacedBlockAt(snapped)) return null;
     const maxHp = MATERIAL_PROPS[material].hardness;
     const block: PlacedBlock = {
-      pos:      { x: snap(worldPos.x), y: snap(worldPos.y) },
+      pos:      { x: snapped.x, y: snapped.y },
       material,
       hp:       maxHp,
       maxHp,

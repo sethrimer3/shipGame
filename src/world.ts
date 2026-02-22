@@ -426,10 +426,8 @@ export class World {
       ctx.globalAlpha = fade * pulse;
       ctx.shadowColor = props.color;
       ctx.shadowBlur  = 8;
-      ctx.beginPath();
-      ctx.arc(p.pos.x, p.pos.y, 5, 0, Math.PI * 2);
       ctx.fillStyle = props.color;
-      ctx.fill();
+      ctx.fillRect(p.pos.x - 5, p.pos.y - 5, 10, 10);
       ctx.shadowBlur = 0;
       ctx.globalAlpha = fade * 0.85;
       ctx.fillStyle = props.color;

@@ -9,9 +9,21 @@ export class Camera {
   private width  = 800;
   private height = 600;
 
+  private shakeIntensity = 0;
+
   resize(w: number, h: number): void {
     this.width  = w;
     this.height = h;
+  }
+
+  /** Add screen-shake of given intensity (pixels). Accumulates up to a cap. */
+  shake(intensity: number): void {
+    this.shakeIntensity = Math.min(this.shakeIntensity + intensity, 20);
+  }
+
+  /** Decay shake each frame; call from the game update loop. */
+  updateShake(dt: number): void {
+    this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 40);
   }
 
   /** Smoothly follow a target world position. */
@@ -41,7 +53,9 @@ export class Camera {
   /** Apply camera transform to the canvas context. */
   begin(ctx: CanvasRenderingContext2D): void {
     ctx.save();
-    ctx.translate(this.width / 2, this.height / 2);
+    const sx = this.shakeIntensity > 0 ? (Math.random() - 0.5) * this.shakeIntensity * 2 : 0;
+    const sy = this.shakeIntensity > 0 ? (Math.random() - 0.5) * this.shakeIntensity * 2 : 0;
+    ctx.translate(this.width / 2 + sx, this.height / 2 + sy);
     ctx.scale(this.zoom, this.zoom);
     ctx.translate(-this.position.x, -this.position.y);
   }

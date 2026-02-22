@@ -208,6 +208,7 @@ export class World {
             const killed = enemy.damage(proj.damage, particles, Math.random);
             if (killed) {
               this.kills++;
+              player.gainXP(enemy.tier.xpValue);
               // ── Loot drop ──────────────────────────────────────────
               if (Math.random() < enemy.tier.dropChance) {
                 const dropDist = len(enemy.pos);

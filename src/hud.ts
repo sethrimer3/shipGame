@@ -19,8 +19,10 @@ function zoneForDist(d: number): { name: string; color: string } {
 
 /** Renders health / shield bars and coordinates via the DOM overlay. */
 export class HUD {
-  private readonly healthBar  = document.getElementById('health-bar')   as HTMLDivElement;
-  private readonly shieldBar  = document.getElementById('shield-bar')   as HTMLDivElement;
+  private readonly healthBar  = document.getElementById('health-bar')    as HTMLDivElement;
+  private readonly shieldBar  = document.getElementById('shield-bar')    as HTMLDivElement;
+  private readonly xpBar      = document.getElementById('xp-bar')        as HTMLDivElement;
+  private readonly levelDisp  = document.getElementById('level-display') as HTMLDivElement;
   private readonly coordsDisp = document.getElementById('coords-display') as HTMLDivElement;
   private readonly killsDisp  = document.getElementById('kills-display')  as HTMLDivElement | null;
   private readonly zoneDisp   = document.getElementById('zone-display')   as HTMLDivElement | null;
@@ -31,6 +33,9 @@ export class HUD {
   update(player: Player, dt: number, kills: number): void {
     this.healthBar.style.width = `${(player.hp    / player.maxHp)    * 100}%`;
     this.shieldBar.style.width = `${(player.shield / player.maxShield) * 100}%`;
+
+    this.xpBar.style.width     = `${(player.xp / player.xpToNextLevel()) * 100}%`;
+    this.levelDisp.textContent = `Lv ${player.level}`;
 
     const x = Math.round(player.pos.x);
     const y = Math.round(player.pos.y);

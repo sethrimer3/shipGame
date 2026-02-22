@@ -121,6 +121,19 @@ class Game {
     // ── World / enemies / collisions ────────────────────────────────
     this.world.update(dt, this.player, this.projectiles, this.particles, this.camera.position);
 
+    // ── Level-up notification ────────────────────────────────────
+    if (this.player.leveledUp) {
+      this.player.leveledUp = false;
+      this.hud.showMessage(`⬆ Level ${this.player.level}! HP +10  Shield +5`, 3);
+    }
+
+    // ── Camera shake on damage ───────────────────────────────────
+    if (this.player.recentDamage > 0) {
+      this.camera.shake(Math.min(this.player.recentDamage * 0.4, 12));
+      this.player.recentDamage = 0;
+    }
+    this.camera.updateShake(dt);
+
     // ── Projectiles ─────────────────────────────────────────────────
     for (const p of this.projectiles) p.update(dt);
     this.projectiles.splice(0, this.projectiles.length,

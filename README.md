@@ -12,7 +12,9 @@ A 2D sandbox ship game built with HTML and TypeScript.
 - **Enemy ships** – 4 tiers that scale with distance from origin (Scout, Fighter, Cruiser, Capital Ship); patrol until the player is spotted, then chase and attack
 - **Resource collection** – shoot/mine asteroids to collect materials
 - **Crafting system** – open with **C** to combine materials into weapons and upgrades
-- **HUD** – health bar, shield bar, world coordinates
+- **HUD** – health bar, shield bar, XP bar, level, world coordinates
+- **XP & Levelling** – earn XP by destroying enemies; level up to gain +10 max HP and +5 max shield per level
+- **Camera shake** – screen shakes when the player takes damage
 
 ## Controls
 

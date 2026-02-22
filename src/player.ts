@@ -24,6 +24,15 @@ export class Player {
   shield     = 60;
   shieldRegen = 8; // per second
 
+  /** Experience points accumulated this run. */
+  xp    = 0;
+  /** Current player level (starts at 1). */
+  level = 1;
+  /** Set to true when a level-up just occurred; game loop reads and clears. */
+  leveledUp = false;
+  /** Damage absorbed this frame; game loop reads to trigger camera shake. */
+  recentDamage = 0;
+
   readonly radius = SHIP_RADIUS;
 
   /** Raw material ore counts. */
@@ -48,6 +57,24 @@ export class Player {
   ) {}
 
   get alive(): boolean { return this.hp > 0; }
+
+  /** XP required to reach the next level. */
+  xpToNextLevel(): number { return this.level * 100; }
+
+  /** Award XP; triggers level-up logic and sets `leveledUp` flag. */
+  gainXP(amount: number): void {
+    this.xp += amount;
+    while (this.xp >= this.xpToNextLevel()) {
+      const threshold = this.xpToNextLevel(); // capture before level increment
+      this.xp -= threshold;
+      this.level++;
+      this.maxHp    += 10;
+      this.hp        = Math.min(this.hp + 10, this.maxHp);
+      this.maxShield += 5;
+      this.shield    = Math.min(this.shield + 5, this.maxShield);
+      this.leveledUp = true;
+    }
+  }
 
   /** Add material resources to inventory. */
   addResource(mat: Material, qty: number): void {
@@ -134,6 +161,7 @@ export class Player {
 
   /** Take damage (shield absorbs first). */
   damage(amount: number): void {
+    this.recentDamage += amount;
     let remaining = amount;
     const shieldAbsorb = Math.min(this.shield, remaining);
     this.shield   -= shieldAbsorb;

@@ -27,7 +27,7 @@ export class InputManager {
 
     canvas.addEventListener('mousedown', e => {
       if (e.button === 0) this._mouseDown = true;
-      if (e.button === 2) this._mouseRightDown = true;
+      if (e.button === 2) { this._mouseRightDown = true; e.preventDefault(); }
     });
     canvas.addEventListener('mouseup', e => {
       if (e.button === 0) this._mouseDown = false;

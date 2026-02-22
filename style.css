@@ -43,7 +43,8 @@ body {
 }
 
 #health-bar-container,
-#shield-bar-container {
+#shield-bar-container,
+#overheat-bar-container {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -84,6 +85,11 @@ body {
 .bar-inner.xp {
   background: linear-gradient(90deg, #f1c40f, #e67e22);
   width: 0%;
+}
+
+.bar-inner.overheat {
+  background: linear-gradient(90deg, #f39c12, #c0392b);
+  width: 100%;
 }
 
 #xp-bar-container {

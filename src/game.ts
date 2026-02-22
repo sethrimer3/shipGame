@@ -1,6 +1,6 @@
 import { InputManager }  from './input';
 import { Camera }        from './camera';
-import { Player }        from './player';
+import { Player, ShipModuleType }        from './player';
 import { World }         from './world';
 import { Toolbar }       from './toolbar';
 import { CraftingSystem } from './crafting';
@@ -32,6 +32,20 @@ interface BlockLaunchEffect {
   maxLife: number;
 }
 
+interface ModuleEditorConfig {
+  type: ShipModuleType;
+  name: string;
+  desc: string;
+  color: string;
+}
+
+const MODULE_EDITOR_CONFIG: ModuleEditorConfig[] = [
+  { type: 'hull', name: 'Hull', desc: 'Main structure. Raises maximum HP.', color: '#2ecc71' },
+  { type: 'engine', name: 'Engine', desc: 'Boosts acceleration and top speed.', color: '#7fd9ff' },
+  { type: 'shield', name: 'Shield', desc: 'Increases max shield and regen.', color: '#9f8cff' },
+  { type: 'coolant', name: 'Coolant', desc: 'Reduces overheat drain and speeds recovery.', color: '#7fffd2' },
+];
+
 class Game {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx:    CanvasRenderingContext2D;
@@ -58,7 +72,9 @@ class Game {
 
   /** Whether the settings panel is open. */
   private _settingsOpen   = false;
+  private _shipEditorOpen = false;
   private _settingsKeyHeld = false;
+  private _shipEditorKeyHeld = false;
   /** When true (default), WASD moves relative to ship facing. When false, WASD = world axes. */
   private advancedMovement = false;
   /** Cooldown for the placer laser. */
@@ -124,6 +140,8 @@ class Game {
       });
     }
 
+    this._initShipEditor();
+
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -173,7 +191,14 @@ class Game {
     }
     if (!this.input.isDown('tab')) this._settingsKeyHeld = false;
 
-    if (this._settingsOpen) return; // pause game while settings open
+    if (this.input.isDown('b') && !this._shipEditorKeyHeld) {
+      this._shipEditorOpen = !this._shipEditorOpen;
+      this._shipEditorKeyHeld = true;
+      this._setShipEditorVisible(this._shipEditorOpen);
+    }
+    if (!this.input.isDown('b')) this._shipEditorKeyHeld = false;
+
+    if (this._settingsOpen || this._shipEditorOpen) return;
 
     // ── Toolbar navigation ──────────────────────────────────────────
     const scroll = this.input.consumeScroll();
@@ -289,6 +314,80 @@ class Game {
     // ── HUD ────────────────────────────────────────────────────────
     this.hud.update(this.player, dt, this.world.kills);
     this.crafting.refresh();
+  }
+
+
+  private _initShipEditor(): void {
+    const closeBtn = document.getElementById('close-ship-editor');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        this._shipEditorOpen = false;
+        this._setShipEditorVisible(false);
+      });
+    }
+
+    const modulesRoot = document.getElementById('ship-editor-modules');
+    if (!modulesRoot) return;
+
+    modulesRoot.innerHTML = '';
+    for (const mod of MODULE_EDITOR_CONFIG) {
+      const row = document.createElement('div');
+      row.className = 'editor-module-row';
+      row.innerHTML = `
+        <div class="editor-module-info">
+          <div class="editor-module-name" style="color:${mod.color}">${mod.name}</div>
+          <div class="editor-module-desc">${mod.desc}</div>
+        </div>
+        <div class="editor-module-controls">
+          <button class="editor-btn" data-module="${mod.type}" data-action="remove">-</button>
+          <span class="editor-module-count" id="module-count-${mod.type}">0</span>
+          <button class="editor-btn" data-module="${mod.type}" data-action="add">+</button>
+        </div>
+      `;
+      modulesRoot.appendChild(row);
+    }
+
+    modulesRoot.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (!(target instanceof HTMLButtonElement)) return;
+      const moduleType = target.dataset.module as ShipModuleType | undefined;
+      const action = target.dataset.action;
+      if (!moduleType || !action) return;
+      if (action === 'add') this.player.addModule(moduleType);
+      if (action === 'remove') this.player.removeModule(moduleType);
+      this._refreshShipEditorPanel();
+    });
+
+    this._refreshShipEditorPanel();
+  }
+
+  private _setShipEditorVisible(visible: boolean): void {
+    const panel = document.getElementById('ship-editor-panel');
+    if (panel) {
+      if (visible) panel.classList.remove('hidden');
+      else panel.classList.add('hidden');
+    }
+    if (visible) this._refreshShipEditorPanel();
+  }
+
+  private _refreshShipEditorPanel(): void {
+    const counts = this.player.moduleCounts;
+    for (const mod of MODULE_EDITOR_CONFIG) {
+      const countEl = document.getElementById(`module-count-${mod.type}`);
+      if (countEl) countEl.textContent = String(counts[mod.type]);
+    }
+
+    const stats = document.getElementById('ship-editor-stats');
+    if (stats) {
+      stats.innerHTML = `
+        <div class="editor-stat">HP ${Math.round(this.player.maxHp)}</div>
+        <div class="editor-stat">Shield ${Math.round(this.player.maxShield)}</div>
+        <div class="editor-stat">Regen ${this.player.shieldRegen.toFixed(1)}/s</div>
+        <div class="editor-stat">Accel x${this.player.accelerationMultiplier.toFixed(2)}</div>
+        <div class="editor-stat">Top Speed x${this.player.topSpeedMultiplier.toFixed(2)}</div>
+        <div class="editor-stat">Coolant x${this.player.overheatRechargeMultiplier.toFixed(2)}</div>
+      `;
+    }
   }
 
   private _lineGridPath(from: Vec2, to: Vec2): Vec2[] {

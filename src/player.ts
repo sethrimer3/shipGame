@@ -16,6 +16,15 @@ const OVERHEAT_MAX = 100;
 const OVERHEAT_DRAIN_RATE = 25;
 const OVERHEAT_RECHARGE_RATE = 18;
 
+export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant';
+
+interface ShipModules {
+  hull: number;
+  engine: number;
+  shield: number;
+  coolant: number;
+}
+
 export class Player {
   pos: Vec2  = { x: 0, y: 0 };
   vel: Vec2  = { x: 0, y: 0 };
@@ -51,6 +60,14 @@ export class Player {
 
   private fireCooldown = 0;
   private overheatMeter = OVERHEAT_MAX;
+  private levelHpBonus = 0;
+  private levelShieldBonus = 0;
+  private modules: ShipModules = {
+    hull: 12,
+    engine: 2,
+    shield: 2,
+    coolant: 1,
+  };
 
   constructor(
     private readonly input:    InputManager,
@@ -61,10 +78,29 @@ export class Player {
     public hasShieldGen        = false,
     /** Whether Heavy Armor upgrade is active. */
     public hasHeavyArmor       = false,
-  ) {}
+  ) {
+    this._recalculateShipStats();
+  }
 
   get alive(): boolean { return this.hp > 0; }
   get overheatRatio(): number { return this.overheatMeter / OVERHEAT_MAX; }
+  get moduleCounts(): Readonly<ShipModules> { return this.modules; }
+
+  get accelerationMultiplier(): number {
+    return 1 + this.modules.engine * 0.14;
+  }
+
+  get topSpeedMultiplier(): number {
+    return 1 + this.modules.engine * 0.12;
+  }
+
+  get overheatDrainMultiplier(): number {
+    return Math.max(0.35, 1 - this.modules.coolant * 0.12);
+  }
+
+  get overheatRechargeMultiplier(): number {
+    return 1 + this.modules.coolant * 0.3;
+  }
 
   getMuzzleWorldPos(): Vec2 {
     const forward = fromAngle(this.angle);
@@ -84,12 +120,26 @@ export class Player {
       const threshold = this.xpToNextLevel(); // capture before level increment
       this.xp -= threshold;
       this.level++;
-      this.maxHp    += 10;
+      this.levelHpBonus += 10;
+      this.levelShieldBonus += 5;
+      this._recalculateShipStats();
       this.hp        = Math.min(this.hp + 10, this.maxHp);
-      this.maxShield += 5;
       this.shield    = Math.min(this.shield + 5, this.maxShield);
       this.leveledUp = true;
     }
+  }
+
+  addModule(type: ShipModuleType): void {
+    this.modules[type] += 1;
+    this._recalculateShipStats();
+  }
+
+  removeModule(type: ShipModuleType): boolean {
+    const minForType = type === 'hull' ? 4 : 0;
+    if (this.modules[type] <= minForType) return false;
+    this.modules[type] -= 1;
+    this._recalculateShipStats();
+    return true;
   }
 
   /** Add material resources to inventory. */
@@ -112,7 +162,22 @@ export class Player {
     this.hasShieldGen  = this.equippedItems.some(i => i?.id === 'shield_gen');
     this.hasHeavyArmor = this.equippedItems.some(i => i?.id === 'heavy_armor');
     this.thrustMultiplier = this.equippedItems.some(i => i?.id === 'dark_engine') ? 2 : 1;
-    if (this.hasHeavyArmor) this.maxHp = 200; else this.maxHp = 100;
+    this._recalculateShipStats();
+  }
+
+  private _recalculateShipStats(): void {
+    const hpRatio = this.maxHp > 0 ? this.hp / this.maxHp : 1;
+    const shieldRatio = this.maxShield > 0 ? this.shield / this.maxShield : 1;
+
+    const hullHp = 40 + this.modules.hull * 18;
+    this.maxHp = hullHp + this.levelHpBonus;
+    if (this.hasHeavyArmor) this.maxHp += 100;
+
+    this.maxShield = 10 + this.modules.shield * 20 + this.levelShieldBonus;
+    this.shieldRegen = 2 + this.modules.shield * 1.8;
+
+    this.hp = Math.max(1, Math.min(this.maxHp, this.maxHp * hpRatio));
+    this.shield = Math.max(0, Math.min(this.maxShield, this.maxShield * shieldRatio));
   }
 
   update(
@@ -135,7 +200,7 @@ export class Player {
 
     const boostActive = this.input.isDown('shift') && this.overheatMeter > 0;
     const speedMultiplier = boostActive ? BOOST_MULTIPLIER : 1;
-    const thrust = THRUST_FORCE * this.thrustMultiplier * speedMultiplier;
+    const thrust = THRUST_FORCE * this.thrustMultiplier * this.accelerationMultiplier * speedMultiplier;
     let ax = 0, ay = 0;
 
     if (advancedMovement) {
@@ -159,9 +224,10 @@ export class Player {
     this.vel.y += ay * dt;
 
     const spd = len(this.vel);
-    if (spd > MAX_SPEED * this.thrustMultiplier * speedMultiplier) {
+    const maxSpeed = MAX_SPEED * this.thrustMultiplier * this.topSpeedMultiplier * speedMultiplier;
+    if (spd > maxSpeed) {
       const n   = normalize(this.vel);
-      this.vel  = scale(n, MAX_SPEED * this.thrustMultiplier * speedMultiplier);
+      this.vel  = scale(n, maxSpeed);
     }
 
     // Apply drag each second scaled by dt
@@ -194,9 +260,11 @@ export class Player {
     let drainMultiplier = 0;
     if (boostActive && (accelerating || tryingToFire)) {
       drainMultiplier = accelerating && tryingToFire ? 2 : 1;
-      this.overheatMeter = Math.max(0, this.overheatMeter - OVERHEAT_DRAIN_RATE * drainMultiplier * dt);
+      const drainRate = OVERHEAT_DRAIN_RATE * this.overheatDrainMultiplier;
+      this.overheatMeter = Math.max(0, this.overheatMeter - drainRate * drainMultiplier * dt);
     } else {
-      this.overheatMeter = Math.min(OVERHEAT_MAX, this.overheatMeter + OVERHEAT_RECHARGE_RATE * dt);
+      const rechargeRate = OVERHEAT_RECHARGE_RATE * this.overheatRechargeMultiplier;
+      this.overheatMeter = Math.min(OVERHEAT_MAX, this.overheatMeter + rechargeRate * dt);
     }
 
     const heat = 1 - this.overheatRatio;
@@ -247,22 +315,18 @@ export class Player {
     // Block-based ship body (col=+x=forward, row=+y=down in local space)
     const B = 7; // block size in pixels
     // [col, row] offsets from ship centre; col+ points toward nose
-    const blocks: [number, number][] = [
-      [ 2,  0],                                            // nose
-      [ 1, -1], [ 1,  0], [ 1,  1],                       // forward section
-      [ 0, -1], [ 0,  0], [ 0,  1],                       // centre section
-      [-1, -2], [-1, -1], [-1,  0], [-1,  1], [-1,  2],   // rear wings
-    ];
+    const blocks = this._buildShipBlocks();
 
     if (thrusting) {
       ctx.shadowColor = '#4af';
       ctx.shadowBlur  = 14;
     }
 
-    for (const [col, row] of blocks) {
+    for (const block of blocks) {
+      const { col, row, color } = block;
       const x = col * B - B / 2;
       const y = row * B - B / 2;
-      ctx.fillStyle   = col === 2 ? '#5df093' : col >= 0 ? '#2ecc71' : '#1a9957';
+      ctx.fillStyle = color;
       ctx.fillRect(x, y, B, B);
       ctx.strokeStyle = '#0a4d22';
       ctx.lineWidth   = 0.5;
@@ -288,5 +352,32 @@ export class Player {
       ctx.lineWidth   = 2;
       ctx.stroke();
     }
+  }
+
+  private _buildShipBlocks(): Array<{ col: number; row: number; color: string }> {
+    const hullSlots: Array<[number, number]> = [
+      [0, 0], [1, 0], [0, -1], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, -1], [-1, 1],
+      [2, 0], [-2, 0], [0, -2], [0, 2], [2, -1], [2, 1], [-2, -1], [-2, 1],
+      [1, -2], [1, 2], [-1, -2], [-1, 2], [3, 0], [-3, 0],
+    ];
+    const blocks: Array<{ col: number; row: number; color: string }> = [];
+    const hullCount = Math.min(this.modules.hull, hullSlots.length);
+    for (let i = 0; i < hullCount; i++) {
+      const [col, row] = hullSlots[i];
+      const color = col >= 2 ? '#5df093' : col >= 0 ? '#2ecc71' : '#1a9957';
+      blocks.push({ col, row, color });
+    }
+
+    const addSpecial = (count: number, slots: Array<[number, number]>, color: string) => {
+      for (let i = 0; i < count; i++) {
+        const slot = slots[i % slots.length];
+        blocks.push({ col: slot[0], row: slot[1], color });
+      }
+    };
+
+    addSpecial(this.modules.engine, [[-3, -1], [-3, 1], [-4, 0], [-4, -1], [-4, 1]], '#7fd9ff');
+    addSpecial(this.modules.shield, [[0, -3], [0, 3], [1, -3], [1, 3], [-1, -3], [-1, 3]], '#9f8cff');
+    addSpecial(this.modules.coolant, [[-2, -2], [-2, 2], [-3, -2], [-3, 2]], '#7fffd2');
+    return blocks;
   }
 }

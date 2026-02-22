@@ -14,6 +14,8 @@ export class Asteroid {
     rows:  number,
     distFromOrigin: number,
     rng:   () => number,
+    /** If set, every block in this cluster uses this material (gem node). */
+    forcedMaterial?: Material,
   ) {
     this.width  = cols * BLOCK_SIZE;
     this.height = rows * BLOCK_SIZE;
@@ -26,7 +28,7 @@ export class Asteroid {
         const ellipse = (cx * cx) / 0.25 + (cy * cy) / 0.25;
         if (ellipse > 1 + (rng() - 0.5) * 0.6) continue;
 
-        const mat = pickMaterial(distFromOrigin, rng);
+        const mat = forcedMaterial ?? pickMaterial(distFromOrigin, rng);
         this.blocks.push(new Block(mat, c, r));
       }
     }

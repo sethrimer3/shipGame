@@ -42,10 +42,19 @@ export class CraftingSystem {
       const chip = document.createElement('div');
       chip.className = 'inv-chip';
 
-      const dot = document.createElement('span');
-      dot.className           = 'chip-dot';
-      dot.style.background    = MATERIAL_PROPS[mat].color;
-      chip.appendChild(dot);
+      const props = MATERIAL_PROPS[mat];
+      if (props.sprite) {
+        const img = document.createElement('img');
+        img.src       = props.sprite;
+        img.alt       = mat;
+        img.className = 'chip-icon';
+        chip.appendChild(img);
+      } else {
+        const dot = document.createElement('span');
+        dot.className           = 'chip-dot';
+        dot.style.background    = props.color;
+        chip.appendChild(dot);
+      }
 
       chip.appendChild(document.createTextNode(`${mat}: ${qty}`));
       el.appendChild(chip);

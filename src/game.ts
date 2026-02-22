@@ -124,7 +124,7 @@ class Game {
     this.camera.follow(this.player.pos, dt);
 
     // ── HUD ────────────────────────────────────────────────────────
-    this.hud.update(this.player, dt);
+    this.hud.update(this.player, dt, this.world.kills);
     this.crafting.refresh();
   }
 

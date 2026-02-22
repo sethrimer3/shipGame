@@ -18,7 +18,7 @@ const OVERHEAT_RECHARGE_RATE = 18;
 
 export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant';
 
-interface ShipModules {
+export interface ShipModules {
   hull: number;
   engine: number;
   shield: number;
@@ -131,6 +131,16 @@ export class Player {
 
   addModule(type: ShipModuleType): void {
     this.modules[type] += 1;
+    this._recalculateShipStats();
+  }
+
+  setModules(next: ShipModules): void {
+    this.modules = {
+      hull: Math.max(1, Math.floor(next.hull)),
+      engine: Math.max(0, Math.floor(next.engine)),
+      shield: Math.max(0, Math.floor(next.shield)),
+      coolant: Math.max(0, Math.floor(next.coolant)),
+    };
     this._recalculateShipStats();
   }
 

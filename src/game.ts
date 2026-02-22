@@ -1,6 +1,6 @@
 import { InputManager }  from './input';
 import { Camera }        from './camera';
-import { Player, ShipModuleType }        from './player';
+import { Player, ShipModuleType, ShipModules }        from './player';
 import { World }         from './world';
 import { Toolbar }       from './toolbar';
 import { CraftingSystem } from './crafting';
@@ -46,6 +46,9 @@ const MODULE_EDITOR_CONFIG: ModuleEditorConfig[] = [
   { type: 'coolant', name: 'Coolant', desc: 'Reduces overheat drain and speeds recovery.', color: '#7fffd2' },
 ];
 
+const EDITOR_GRID_SIZE = 9;
+
+
 class Game {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx:    CanvasRenderingContext2D;
@@ -82,6 +85,9 @@ class Game {
   private _lastPlacedWorldPos: Vec2 | null = null;
   private readonly _placementBeams: PlacementBeamEffect[] = [];
   private readonly _launchEffects: BlockLaunchEffect[] = [];
+
+  private _pendingShipModules: ShipModules | null = null;
+  private _draggingModuleType: ShipModuleType | null = null;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -326,37 +332,82 @@ class Game {
       });
     }
 
-    const modulesRoot = document.getElementById('ship-editor-modules');
-    if (!modulesRoot) return;
-
-    modulesRoot.innerHTML = '';
-    for (const mod of MODULE_EDITOR_CONFIG) {
-      const row = document.createElement('div');
-      row.className = 'editor-module-row';
-      row.innerHTML = `
-        <div class="editor-module-info">
-          <div class="editor-module-name" style="color:${mod.color}">${mod.name}</div>
-          <div class="editor-module-desc">${mod.desc}</div>
-        </div>
-        <div class="editor-module-controls">
-          <button class="editor-btn" data-module="${mod.type}" data-action="remove">-</button>
-          <span class="editor-module-count" id="module-count-${mod.type}">0</span>
-          <button class="editor-btn" data-module="${mod.type}" data-action="add">+</button>
-        </div>
-      `;
-      modulesRoot.appendChild(row);
+    const confirmBtn = document.getElementById('confirm-ship-editor');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => {
+        if (!this._pendingShipModules) return;
+        this.player.setModules(this._pendingShipModules);
+        this._pendingShipModules = { ...this.player.moduleCounts };
+        this._refreshShipEditorPanel();
+        this.hud.showMessage('Ship layout saved');
+      });
     }
 
-    modulesRoot.addEventListener('click', (event) => {
-      const target = event.target as HTMLElement;
-      if (!(target instanceof HTMLButtonElement)) return;
-      const moduleType = target.dataset.module as ShipModuleType | undefined;
-      const action = target.dataset.action;
-      if (!moduleType || !action) return;
-      if (action === 'add') this.player.addModule(moduleType);
-      if (action === 'remove') this.player.removeModule(moduleType);
-      this._refreshShipEditorPanel();
-    });
+    const paletteRoot = document.getElementById('ship-editor-palette');
+    if (paletteRoot) {
+      paletteRoot.innerHTML = '';
+      for (const mod of MODULE_EDITOR_CONFIG) {
+        const item = document.createElement('button');
+        item.className = 'editor-palette-item';
+        item.draggable = true;
+        item.dataset.module = mod.type;
+        item.style.borderColor = mod.color;
+        item.innerHTML = `
+          <span class="editor-palette-name" style="color:${mod.color}">${mod.name}</span>
+          <span class="editor-palette-desc">${mod.desc}</span>
+        `;
+
+        item.addEventListener('dragstart', (event) => {
+          this._draggingModuleType = mod.type;
+          event.dataTransfer?.setData('text/plain', mod.type);
+          event.dataTransfer?.setDragImage(item, item.clientWidth / 2, item.clientHeight / 2);
+        });
+        item.addEventListener('dragend', () => {
+          this._draggingModuleType = null;
+          this._clearEditorGridHighlights();
+        });
+
+        paletteRoot.appendChild(item);
+      }
+    }
+
+    const gridRoot = document.getElementById('ship-editor-grid');
+    if (gridRoot) {
+      gridRoot.innerHTML = '';
+      const center = Math.floor(EDITOR_GRID_SIZE / 2);
+      for (let row = 0; row < EDITOR_GRID_SIZE; row++) {
+        for (let col = 0; col < EDITOR_GRID_SIZE; col++) {
+          const cell = document.createElement('div');
+          cell.className = 'editor-grid-cell';
+          cell.dataset.row = String(row);
+          cell.dataset.col = String(col);
+          if (row === center && col === center) {
+            cell.dataset.locked = 'true';
+            cell.classList.add('core');
+          }
+
+          cell.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            if (cell.dataset.locked === 'true') return;
+            cell.classList.add('drop-target');
+          });
+          cell.addEventListener('dragleave', () => {
+            cell.classList.remove('drop-target');
+          });
+          cell.addEventListener('drop', (event) => {
+            event.preventDefault();
+            cell.classList.remove('drop-target');
+            if (cell.dataset.locked === 'true') return;
+
+            const moduleType = (event.dataTransfer?.getData('text/plain') || this._draggingModuleType) as ShipModuleType | '';
+            if (!moduleType) return;
+            this._setPendingModuleAtCell(row, col, moduleType);
+          });
+
+          gridRoot.appendChild(cell);
+        }
+      }
+    }
 
     this._refreshShipEditorPanel();
   }
@@ -367,27 +418,111 @@ class Game {
       if (visible) panel.classList.remove('hidden');
       else panel.classList.add('hidden');
     }
-    if (visible) this._refreshShipEditorPanel();
+    if (visible) {
+      this._pendingShipModules = { ...this.player.moduleCounts };
+      this._refreshShipEditorPanel();
+    }
   }
 
   private _refreshShipEditorPanel(): void {
-    const counts = this.player.moduleCounts;
+    if (!this._pendingShipModules) this._pendingShipModules = { ...this.player.moduleCounts };
+
+    const counts = this._pendingShipModules;
     for (const mod of MODULE_EDITOR_CONFIG) {
       const countEl = document.getElementById(`module-count-${mod.type}`);
       if (countEl) countEl.textContent = String(counts[mod.type]);
     }
 
+    this._renderPendingShipGrid();
+
+    const base = this.player.moduleCounts;
+    const hp = this.player.maxHp + (counts.hull - base.hull) * 18;
+    const shield = this.player.maxShield + (counts.shield - base.shield) * 20;
+    const regen = this.player.shieldRegen + (counts.shield - base.shield) * 1.8;
+    const accel = Math.max(0.1, 1 + counts.engine * 0.14);
+    const speed = Math.max(0.1, 1 + counts.engine * 0.12);
+    const coolant = Math.max(0.1, 1 + counts.coolant * 0.3);
+
     const stats = document.getElementById('ship-editor-stats');
     if (stats) {
       stats.innerHTML = `
-        <div class="editor-stat">HP ${Math.round(this.player.maxHp)}</div>
-        <div class="editor-stat">Shield ${Math.round(this.player.maxShield)}</div>
-        <div class="editor-stat">Regen ${this.player.shieldRegen.toFixed(1)}/s</div>
-        <div class="editor-stat">Accel x${this.player.accelerationMultiplier.toFixed(2)}</div>
-        <div class="editor-stat">Top Speed x${this.player.topSpeedMultiplier.toFixed(2)}</div>
-        <div class="editor-stat">Coolant x${this.player.overheatRechargeMultiplier.toFixed(2)}</div>
+        <div class="editor-stat">HP ${Math.round(hp)}</div>
+        <div class="editor-stat">Shield ${Math.round(shield)}</div>
+        <div class="editor-stat">Regen ${regen.toFixed(1)}/s</div>
+        <div class="editor-stat">Accel x${accel.toFixed(2)}</div>
+        <div class="editor-stat">Top Speed x${speed.toFixed(2)}</div>
+        <div class="editor-stat">Coolant x${coolant.toFixed(2)}</div>
       `;
     }
+  }
+
+  private _clearEditorGridHighlights(): void {
+    const cells = document.querySelectorAll('.editor-grid-cell.drop-target');
+    cells.forEach(c => c.classList.remove('drop-target'));
+  }
+
+  private _setPendingModuleAtCell(row: number, col: number, moduleType: ShipModuleType): void {
+    if (!this._pendingShipModules) this._pendingShipModules = { ...this.player.moduleCounts };
+    const slots = this._gridSlotsForModules(this._pendingShipModules);
+    const next = slots.find(slot => slot.row === row && slot.col === col);
+    if (!next) return;
+    next.type = moduleType;
+    this._pendingShipModules = this._modulesFromGridSlots(slots);
+    this._refreshShipEditorPanel();
+  }
+
+  private _renderPendingShipGrid(): void {
+    if (!this._pendingShipModules) return;
+    const slotByPos = new Map<string, ShipModuleType>();
+    for (const slot of this._gridSlotsForModules(this._pendingShipModules)) {
+      slotByPos.set(`${slot.row},${slot.col}`, slot.type);
+    }
+
+    const cells = document.querySelectorAll('.editor-grid-cell');
+    for (const cell of cells) {
+      const htmlCell = cell as HTMLDivElement;
+      const row = Number(htmlCell.dataset.row);
+      const col = Number(htmlCell.dataset.col);
+      const moduleType = slotByPos.get(`${row},${col}`);
+      htmlCell.classList.remove('filled', 'hull', 'engine', 'shield', 'coolant');
+      htmlCell.textContent = '';
+      if (!moduleType) {
+        if (htmlCell.dataset.locked === 'true') htmlCell.textContent = 'CORE';
+        continue;
+      }
+      htmlCell.classList.add('filled', moduleType);
+      htmlCell.textContent = moduleType === 'hull' ? 'H' : moduleType[0].toUpperCase();
+    }
+  }
+
+  private _gridSlotsForModules(modules: ShipModules): Array<{ row: number; col: number; type: ShipModuleType }> {
+    const center = Math.floor(EDITOR_GRID_SIZE / 2);
+    const positions: Array<{ row: number; col: number }> = [];
+    for (let row = 0; row < EDITOR_GRID_SIZE; row++) {
+      for (let col = 0; col < EDITOR_GRID_SIZE; col++) {
+        if (row === center && col === center) continue;
+        positions.push({ row, col });
+      }
+    }
+
+    const types: ShipModuleType[] = [];
+    for (const type of ['hull', 'engine', 'shield', 'coolant'] as ShipModuleType[]) {
+      for (let i = 0; i < modules[type]; i++) types.push(type);
+    }
+
+    const limit = Math.min(types.length, positions.length);
+    const slots: Array<{ row: number; col: number; type: ShipModuleType }> = [];
+    for (let i = 0; i < limit; i++) {
+      slots.push({ row: positions[i].row, col: positions[i].col, type: types[i] });
+    }
+    return slots;
+  }
+
+  private _modulesFromGridSlots(slots: Array<{ row: number; col: number; type: ShipModuleType }>): ShipModules {
+    const out: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0 };
+    for (const slot of slots) out[slot.type] += 1;
+    if (out.hull < 1) out.hull = 1;
+    return out;
   }
 
   private _lineGridPath(from: Vec2, to: Vec2): Vec2[] {

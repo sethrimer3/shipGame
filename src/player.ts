@@ -7,8 +7,8 @@ import { Camera }        from './camera';
 import { Projectile }    from './projectile';
 import { Particle, makeExplosion } from './particle';
 
-const THRUST_FORCE  = 320;  // px/s²
-const MAX_SPEED     = 420;  // px/s
+const THRUST_FORCE  = 700;  // px/s²
+const MAX_SPEED     = 900;  // px/s
 const DRAG          = 0.92; // velocity multiplier per frame (applied per-second in dt)
 const SHIP_RADIUS   = 16;
 
@@ -121,8 +121,8 @@ export class Player {
 
     if (this.input.isDown('w')) { ax += forward.x  * thrust; ay += forward.y  * thrust; }
     if (this.input.isDown('s')) { ax -= forward.x  * thrust; ay -= forward.y  * thrust; }
-    if (this.input.isDown('d')) { ax += rightVec.x * thrust; ay += rightVec.y * thrust; }
-    if (this.input.isDown('a')) { ax -= rightVec.x * thrust; ay -= rightVec.y * thrust; }
+    if (this.input.isDown('d')) { ax -= rightVec.x * thrust; ay -= rightVec.y * thrust; }
+    if (this.input.isDown('a')) { ax += rightVec.x * thrust; ay += rightVec.y * thrust; }
 
     // ── Physics ───────────────────────────────────────────────────
     this.vel.x += ax * dt;
@@ -170,43 +170,44 @@ export class Player {
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
+    const thrusting = this.input.isDown('w') || this.input.isDown('s') ||
+                      this.input.isDown('a') || this.input.isDown('d');
+
     ctx.save();
     ctx.translate(this.pos.x, this.pos.y);
     ctx.rotate(this.angle);
 
-    // Engine glow when thrusting
-    const thrusting = this.input.isDown('w') || this.input.isDown('s') ||
-                      this.input.isDown('a') || this.input.isDown('d');
+    // Block-based ship body (col=+x=forward, row=+y=down in local space)
+    const B = 7; // block size in pixels
+    // [col, row] offsets from ship centre; col+ points toward nose
+    const blocks: [number, number][] = [
+      [ 2,  0],                                            // nose
+      [ 1, -1], [ 1,  0], [ 1,  1],                       // forward section
+      [ 0, -1], [ 0,  0], [ 0,  1],                       // centre section
+      [-1, -2], [-1, -1], [-1,  0], [-1,  1], [-1,  2],   // rear wings
+    ];
+
     if (thrusting) {
       ctx.shadowColor = '#4af';
-      ctx.shadowBlur  = 18;
+      ctx.shadowBlur  = 14;
     }
 
-    // Ship body – arrow / delta wing shape
-    ctx.beginPath();
-    ctx.moveTo( 18,  0);  // nose
-    ctx.lineTo(-14, -11); // left wing tip
-    ctx.lineTo( -8,   0); // rear centre notch
-    ctx.lineTo(-14,  11); // right wing tip
-    ctx.closePath();
-    ctx.fillStyle   = '#2ecc71';
-    ctx.strokeStyle = '#1abc9c';
-    ctx.lineWidth   = 1.5;
-    ctx.fill();
-    ctx.stroke();
+    for (const [col, row] of blocks) {
+      const x = col * B - B / 2;
+      const y = row * B - B / 2;
+      ctx.fillStyle   = col === 2 ? '#5df093' : col >= 0 ? '#2ecc71' : '#1a9957';
+      ctx.fillRect(x, y, B, B);
+      ctx.strokeStyle = '#0a4d22';
+      ctx.lineWidth   = 0.5;
+      ctx.strokeRect(x, y, B, B);
+    }
 
     ctx.shadowBlur = 0;
 
     // Engine exhaust flame
     if (thrusting) {
-      ctx.beginPath();
-      ctx.moveTo(-8,  0);
-      ctx.lineTo(-20, -5);
-      ctx.lineTo(-28,  0);
-      ctx.lineTo(-20,  5);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(100, 200, 255, 0.6)';
-      ctx.fill();
+      ctx.fillStyle = 'rgba(100, 200, 255, 0.75)';
+      ctx.fillRect(-2 * B - B / 2, -B / 2, B, B);
     }
 
     ctx.restore();

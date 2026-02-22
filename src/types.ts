@@ -258,8 +258,8 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
   },
   mining_laser: {
     id: 'mining_laser', name: 'Mining Laser', icon: '⛏', color: '#7ed6f3',
-    type: 'tool', damage: 50, fireRate: 3, projectileSpeed: 700,
-    projectileColor: '#7ed6f3', projectileRadius: 4,
+    type: 'tool', damage: 8, fireRate: 2, projectileSpeed: 600,
+    projectileColor: '#7ed6f3', projectileRadius: 3,
   },
   shield_gen:  {
     id: 'shield_gen',  name: 'Shield Gen',  icon: '🛡', color: '#3498db',

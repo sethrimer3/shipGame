@@ -9,7 +9,7 @@ import { Projectile }    from './projectile';
 import { Particle, updateParticle, drawParticle, FloatingText, updateFloatingText, drawFloatingText } from './particle';
 import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
-import { len } from './types';
+import { len, TOOLBAR_ITEM_DEFS } from './types';
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -68,6 +68,12 @@ class Game {
     }
 
     // Initial toolbar render
+    this.toolbar.renderDOM();
+
+    // Give player a starting mining laser in slot 0
+    const miningLaser = TOOLBAR_ITEM_DEFS['mining_laser'];
+    this.toolbar.addItem(miningLaser);
+    this.player.equipItem(0, miningLaser);
     this.toolbar.renderDOM();
 
     requestAnimationFrame((t) => this.loop(t));

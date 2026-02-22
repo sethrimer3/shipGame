@@ -191,17 +191,31 @@ export class Enemy {
     ctx.rotate(this.angle);
 
     const r = this.tier.radius;
-    ctx.beginPath();
-    ctx.moveTo( r * 1.4,  0);
-    ctx.lineTo(-r,       -r * 0.8);
-    ctx.lineTo(-r * 0.4,  0);
-    ctx.lineTo(-r,        r * 0.8);
-    ctx.closePath();
-    ctx.fillStyle   = this.tier.color;
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth   = 1;
-    ctx.fill();
-    ctx.stroke();
+    // Block size scales with tier radius; each ship is a small grid of squares
+    const B = Math.max(5, Math.round(r * 0.55));
+    // [col, row] — col+ = forward (nose), row+ = down in local space
+    const blocks: [number, number][] = r > 14
+      ? [ // larger ships: wider wing arrangement
+          [ 1,  0],
+          [ 0, -1], [ 0,  0], [ 0,  1],
+          [-1, -2], [-1, -1], [-1,  0], [-1,  1], [-1,  2],
+          [-2,  0],
+        ]
+      : [ // small ships: compact cross
+          [ 1,  0],
+          [ 0, -1], [ 0,  0], [ 0,  1],
+          [-1,  0],
+        ];
+
+    for (const [col, row] of blocks) {
+      const x = col * B - B / 2;
+      const y = row * B - B / 2;
+      ctx.fillStyle   = this.tier.color;
+      ctx.fillRect(x, y, B, B);
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth   = 0.5;
+      ctx.strokeRect(x, y, B, B);
+    }
 
     ctx.restore();
 

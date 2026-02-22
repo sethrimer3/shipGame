@@ -7,6 +7,8 @@ import { CraftingSystem } from './crafting';
 import { HUD }           from './hud';
 import { Projectile }    from './projectile';
 import { Particle, updateParticle, drawParticle } from './particle';
+import { StarfieldRenderer } from './starfield';
+import { SunRenderer }       from './sun-renderer';
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -19,11 +21,14 @@ class Game {
   private readonly toolbar:  Toolbar;
   private readonly crafting: CraftingSystem;
   private readonly hud:      HUD;
+  private readonly starfield: StarfieldRenderer;
+  private readonly sunRenderer: SunRenderer;
 
   private readonly projectiles: Projectile[] = [];
   private readonly particles:   Particle[]   = [];
 
   private lastTime = 0;
+  private gameTime = 0;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -40,6 +45,8 @@ class Game {
     this.world   = new World();
     this.toolbar = new Toolbar();
     this.hud     = new HUD();
+    this.starfield   = new StarfieldRenderer();
+    this.sunRenderer = new SunRenderer();
 
     this.crafting = new CraftingSystem(
       this.player,
@@ -70,6 +77,7 @@ class Game {
   private loop(timestamp: number): void {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.05); // cap at 50 ms
     this.lastTime = timestamp;
+    this.gameTime += dt;
 
     this.update(dt);
     this.render();
@@ -142,8 +150,14 @@ class Game {
     ctx.fillStyle = '#06080f';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // Parallax starfield (screen-space, before camera transform)
+    this.starfield.draw(ctx, this.camera.position, canvas.width, canvas.height);
+
     // World-space rendering
     this.camera.begin(ctx);
+
+    // Sun at world origin
+    this.sunRenderer.draw(ctx, { x: 0, y: 0 }, 150, this.gameTime);
 
     this.world.draw(ctx, this.camera.position);
 

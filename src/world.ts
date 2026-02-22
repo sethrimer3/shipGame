@@ -256,16 +256,6 @@ export class World {
   draw(ctx: CanvasRenderingContext2D, camPos: Vec2): void {
     const chunks = this._activeChunks(camPos);
 
-    // ── Stars ──────────────────────────────────────────────────────
-    for (const chunk of chunks) {
-      for (const s of chunk.stars) {
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${s.brightness})`;
-        ctx.fill();
-      }
-    }
-
     // ── Asteroids ──────────────────────────────────────────────────
     for (const chunk of chunks) {
       for (const asteroid of chunk.asteroids) {

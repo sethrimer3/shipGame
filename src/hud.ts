@@ -1,4 +1,21 @@
 import { Player } from './player';
+import { len } from './types';
+
+const ZONE_THRESHOLDS: Array<{ dist: number; name: string; color: string }> = [
+  { dist: 0,     name: 'Spawn Zone',  color: '#2ecc71' },
+  { dist: 800,   name: 'Near Space',  color: '#3498db' },
+  { dist: 2000,  name: 'Mid Space',   color: '#9b59b6' },
+  { dist: 5000,  name: 'Deep Space',  color: '#e67e22' },
+  { dist: 10000, name: 'Void Fringe', color: '#e74c3c' },
+  { dist: 16000, name: 'Dark Void',   color: '#6c3483' },
+];
+
+function zoneForDist(d: number): { name: string; color: string } {
+  for (let i = ZONE_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (d >= ZONE_THRESHOLDS[i].dist) return ZONE_THRESHOLDS[i];
+  }
+  return ZONE_THRESHOLDS[0];
+}
 
 /** Renders health / shield bars and coordinates via the DOM overlay. */
 export class HUD {
@@ -6,6 +23,7 @@ export class HUD {
   private readonly shieldBar  = document.getElementById('shield-bar')   as HTMLDivElement;
   private readonly coordsDisp = document.getElementById('coords-display') as HTMLDivElement;
   private readonly killsDisp  = document.getElementById('kills-display')  as HTMLDivElement | null;
+  private readonly zoneDisp   = document.getElementById('zone-display')   as HTMLDivElement | null;
   private readonly notif      = document.getElementById('notification')  as HTMLDivElement | null;
 
   private notifTimer = 0;
@@ -19,6 +37,14 @@ export class HUD {
     this.coordsDisp.innerHTML  = `X: ${x} &nbsp; Y: ${y}`;
 
     if (this.killsDisp) this.killsDisp.textContent = `☠ ${kills}`;
+
+    // Zone display
+    if (this.zoneDisp) {
+      const d = len(player.pos);
+      const zone = zoneForDist(d);
+      this.zoneDisp.textContent  = `⬡ ${zone.name}`;
+      this.zoneDisp.style.color  = zone.color;
+    }
 
     // Notification fade-out
     if (this.notifTimer > 0) {

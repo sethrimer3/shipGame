@@ -1,7 +1,7 @@
 import { Vec2, len, dist, Material, MATERIAL_PROPS, pickMaterial, pickGem } from './types';
 import { Asteroid }  from './asteroid';
 import { Enemy }     from './enemy';
-import { Particle }  from './particle';
+import { Particle, FloatingText, makeFloatingText }  from './particle';
 import { Projectile } from './projectile';
 import { Player }    from './player';
 
@@ -154,6 +154,7 @@ export class World {
     player:       Player,
     projectiles:  Projectile[],
     particles:    Particle[],
+    floatingTexts: FloatingText[],
     camPos:       Vec2,
   ): void {
     const chunks = this._activeChunks(camPos);
@@ -206,9 +207,19 @@ export class World {
           if (dist(proj.pos, enemy.pos) < enemy.radius + proj.radius) {
             proj.alive = false;
             const killed = enemy.damage(proj.damage, particles, Math.random);
+            floatingTexts.push(makeFloatingText(
+              { x: enemy.pos.x, y: enemy.pos.y - enemy.radius },
+              `-${proj.damage}`,
+              '#ffcc44',
+            ));
             if (killed) {
               this.kills++;
               player.gainXP(enemy.tier.xpValue);
+              floatingTexts.push(makeFloatingText(
+                { x: enemy.pos.x, y: enemy.pos.y - enemy.radius - 18 },
+                `+${enemy.tier.xpValue} XP`,
+                '#2ecc71',
+              ));
               // ── Loot drop ──────────────────────────────────────────
               if (Math.random() < enemy.tier.dropChance) {
                 const dropDist = len(enemy.pos);
@@ -235,6 +246,11 @@ export class World {
         if (dist(proj.pos, player.pos) < player.radius + proj.radius) {
           proj.alive = false;
           player.damage(proj.damage);
+          floatingTexts.push(makeFloatingText(
+            { x: player.pos.x + (Math.random() - 0.5) * 24, y: player.pos.y - player.radius - 8 },
+            `-${proj.damage}`,
+            '#e74c3c',
+          ));
         }
       }
     }

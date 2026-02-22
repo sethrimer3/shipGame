@@ -184,15 +184,18 @@ class Game {
 
     // ── Placer laser (right-click) ──────────────────────────────────
     this._placerCooldown -= dt;
-    const selectedItem = this.player.equippedItems[this.toolbar.selected];
-    if (selectedItem?.type === 'placer' && this.input.mouseRightDown && this._placerCooldown <= 0) {
-      if (this.player.getResource(Material.Dirt) > 0) {
+    if (this.input.mouseRightDown && this._placerCooldown <= 0) {
+      const available = ALL_MATERIALS.find(m => this.player.getResource(m) > 0);
+      if (available !== undefined) {
         const worldPos = this.camera.screenToWorld(this.input.mousePos);
-        this.world.placeBlock(worldPos, Material.Dirt);
-        this.player.addResource(Material.Dirt, -1);
-        this._placerCooldown = selectedItem.fireRate > 0 ? 1 / selectedItem.fireRate : DEFAULT_PLACER_COOLDOWN;
+        this.world.placeBlock(worldPos, available);
+        this.player.addResource(available, -1);
+        const selectedItem = this.player.equippedItems[this.toolbar.selected];
+        this._placerCooldown = selectedItem?.type === 'placer' && selectedItem.fireRate > 0
+          ? 1 / selectedItem.fireRate
+          : DEFAULT_PLACER_COOLDOWN;
       } else {
-        this.hud.showMessage('No Dirt – mine asteroid surfaces to collect it', 2);
+        this.hud.showMessage('No materials – mine asteroids to collect resources', 2);
         this._placerCooldown = 1.5; // throttle message spam
       }
     }

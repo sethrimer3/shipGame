@@ -127,7 +127,7 @@ export class World {
 
   /** Place a block at a world position (snapped to grid) using the given material. */
   placeBlock(worldPos: Vec2, material: Material): PlacedBlock {
-    const snap = (coord: number) => Math.round((coord - BLOCK_SIZE / 2) / BLOCK_SIZE) * BLOCK_SIZE;
+    const snap = (coord: number) => Math.floor(coord / BLOCK_SIZE) * BLOCK_SIZE;
     const maxHp = MATERIAL_PROPS[material].hardness;
     const block: PlacedBlock = {
       pos:      { x: snap(worldPos.x), y: snap(worldPos.y) },

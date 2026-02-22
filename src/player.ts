@@ -104,6 +104,7 @@ export class Player {
   update(
     dt:           number,
     selectedSlot: number,
+    advancedMovement: boolean,
     particles:    Particle[],
     projectiles:  Projectile[],
   ): void {
@@ -121,10 +122,19 @@ export class Player {
     const thrust = THRUST_FORCE * this.thrustMultiplier;
     let ax = 0, ay = 0;
 
-    if (this.input.isDown('w')) { ax += forward.x  * thrust; ay += forward.y  * thrust; }
-    if (this.input.isDown('s')) { ax -= forward.x  * thrust; ay -= forward.y  * thrust; }
-    if (this.input.isDown('d')) { ax -= rightVec.x * thrust; ay -= rightVec.y * thrust; }
-    if (this.input.isDown('a')) { ax += rightVec.x * thrust; ay += rightVec.y * thrust; }
+    if (advancedMovement) {
+      // Advanced: movement relative to ship's facing direction
+      if (this.input.isDown('w')) { ax += forward.x  * thrust; ay += forward.y  * thrust; }
+      if (this.input.isDown('s')) { ax -= forward.x  * thrust; ay -= forward.y  * thrust; }
+      if (this.input.isDown('d')) { ax -= rightVec.x * thrust; ay -= rightVec.y * thrust; }
+      if (this.input.isDown('a')) { ax += rightVec.x * thrust; ay += rightVec.y * thrust; }
+    } else {
+      // Simple: movement in world-space axes regardless of ship orientation
+      if (this.input.isDown('w')) ay -= thrust;
+      if (this.input.isDown('s')) ay += thrust;
+      if (this.input.isDown('a')) ax -= thrust;
+      if (this.input.isDown('d')) ax += thrust;
+    }
 
     // ── Physics ───────────────────────────────────────────────────
     this.vel.x += ax * dt;

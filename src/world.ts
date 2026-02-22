@@ -4,6 +4,7 @@ import { Enemy }     from './enemy';
 import { Particle, FloatingText, makeFloatingText }  from './particle';
 import { Projectile } from './projectile';
 import { Player }    from './player';
+import { BLOCK_SIZE } from './block';
 
 // ── Physics helpers ──────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ const GEM_CLUSTERS_PER_CHUNK = 2;
 const GEM_CLUSTER_CHANCE     = 0.35; // probability per attempt
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
+const PICKUP_SUCTION_RADIUS = 200;  // world units where pickups accelerate toward player
 const PICKUP_LIFETIME       = 20;   // seconds before despawn
 
 // ── Floating resource pickup ──────────────────────────────────────────────────
@@ -73,6 +75,15 @@ interface ResourcePickup {
   qty:      number;
   lifetime: number;
   maxLife:  number;
+}
+
+// ── Player-placed block ───────────────────────────────────────────────────────
+interface PlacedBlock {
+  pos:      Vec2;   // world-space top-left corner (snapped to BLOCK_SIZE grid)
+  material: Material;
+  hp:       number;
+  maxHp:    number;
+  alive:    boolean;
 }
 
 // ── Simple seeded pseudo-random (deterministic per chunk coord) ────────────
@@ -105,11 +116,29 @@ export class World {
   private readonly chunks = new Map<string, Chunk>();
   private readonly debris: Particle[] = [];   // block destruction particles
 
-  /** Floating resource pickups dropped by enemies. */
+  /** Floating resource pickups dropped by enemies and asteroid debris. */
   pickups: ResourcePickup[] = [];
+
+  /** Blocks placed by the player. */
+  placedBlocks: PlacedBlock[] = [];
 
   /** Accumulated enemy kills – could be used for score */
   kills = 0;
+
+  /** Place a block at a world position (snapped to grid) using the given material. */
+  placeBlock(worldPos: Vec2, material: Material): PlacedBlock {
+    const snap = (coord: number) => Math.round((coord - BLOCK_SIZE / 2) / BLOCK_SIZE) * BLOCK_SIZE;
+    const maxHp = MATERIAL_PROPS[material].hardness;
+    const block: PlacedBlock = {
+      pos:      { x: snap(worldPos.x), y: snap(worldPos.y) },
+      material,
+      hp:       maxHp,
+      maxHp,
+      alive:    true,
+    };
+    this.placedBlocks.push(block);
+    return block;
+  }
 
   private _generateChunk(cx: number, cy: number): Chunk {
     const rng    = mulberry32(chunkSeed(cx, cy));
@@ -233,10 +262,21 @@ export class World {
                   alpha:    1,
                 });
               }
-              // Resource drop for player projectiles
+              // Resource drop: spawn a floating pickup that flies off
               if (proj.owner === 'player') {
                 const drop = Asteroid.resourceDrop(block.material);
-                player.addResource(drop.material, drop.qty);
+                const ang   = Math.random() * Math.PI * 2;
+                const speed = 80 + Math.random() * 150;
+                const blockCx = asteroid.pos.x + block.col * BLOCK_SIZE + BLOCK_SIZE / 2;
+                const blockCy = asteroid.pos.y + block.row * BLOCK_SIZE + BLOCK_SIZE / 2;
+                this.pickups.push({
+                  pos:      { x: blockCx, y: blockCy },
+                  vel:      { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed },
+                  material: drop.material,
+                  qty:      drop.qty,
+                  lifetime: PICKUP_LIFETIME,
+                  maxLife:  PICKUP_LIFETIME,
+                });
               }
             }
           }
@@ -322,14 +362,41 @@ export class World {
       p.lifetime -= dt;
       p.pos.x += p.vel.x * dt;
       p.pos.y += p.vel.y * dt;
+      // Slow drag
       p.vel.x *= 0.98;
       p.vel.y *= 0.98;
-      if (dist(p.pos, player.pos) < PICKUP_COLLECT_RADIUS) {
+      // Suction: attract toward player within suction radius
+      const dToPlayer = dist(p.pos, player.pos);
+      if (dToPlayer < PICKUP_SUCTION_RADIUS && dToPlayer > 0.1) {
+        const dx = player.pos.x - p.pos.x;
+        const dy = player.pos.y - p.pos.y;
+        const strength = (1 - dToPlayer / PICKUP_SUCTION_RADIUS) * 500;
+        p.vel.x += (dx / dToPlayer) * strength * dt;
+        p.vel.y += (dy / dToPlayer) * strength * dt;
+      }
+      if (dToPlayer < PICKUP_COLLECT_RADIUS) {
         player.addResource(p.material, p.qty);
         p.lifetime = 0; // mark collected
       }
     }
     this.pickups = this.pickups.filter(p => p.lifetime > 0);
+
+    // ── Placed-block projectile collisions ───────────────────────
+    for (const block of this.placedBlocks) {
+      if (!block.alive) continue;
+      for (const proj of projectiles) {
+        if (!proj.alive) continue;
+        if (
+          proj.pos.x >= block.pos.x && proj.pos.x < block.pos.x + BLOCK_SIZE &&
+          proj.pos.y >= block.pos.y && proj.pos.y < block.pos.y + BLOCK_SIZE
+        ) {
+          proj.alive = false;
+          block.hp  -= proj.damage;
+          if (block.hp <= 0) block.alive = false;
+        }
+      }
+    }
+    this.placedBlocks = this.placedBlocks.filter(b => b.alive);
   }
 
   draw(ctx: CanvasRenderingContext2D, camPos: Vec2): void {
@@ -370,6 +437,22 @@ export class World {
       ctx.textAlign = 'center';
       ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 9);
       ctx.restore();
+    }
+
+    // ── Placed blocks ──────────────────────────────────────────────
+    for (const block of this.placedBlocks) {
+      if (!block.alive) continue;
+      const props = MATERIAL_PROPS[block.material];
+      ctx.fillStyle = props.color;
+      ctx.fillRect(block.pos.x, block.pos.y, BLOCK_SIZE, BLOCK_SIZE);
+      if (block.hp < block.maxHp) {
+        const ratio = 1 - block.hp / block.maxHp;
+        ctx.fillStyle = `rgba(0,0,0,${ratio * 0.6})`;
+        ctx.fillRect(block.pos.x, block.pos.y, BLOCK_SIZE, BLOCK_SIZE);
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(block.pos.x, block.pos.y, BLOCK_SIZE, BLOCK_SIZE);
     }
   }
 

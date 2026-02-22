@@ -35,9 +35,23 @@
         <div id="crafting-recipes"></div>
         <button id="close-crafting">Close [C]</button>
       </div>
+      <div id="settings-panel" class="hidden">
+        <h2>Settings</h2>
+        <div class="settings-row">
+          <div class="settings-label">
+            <span class="settings-name">Advanced Movement</span>
+            <span class="settings-desc">W moves toward mouse cursor; WASD relative to ship orientation</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="setting-adv-movement" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <button id="close-settings">Close [Tab]</button>
+      </div>
       <div id="toolbar-container">
         <div id="toolbar"></div>
-        <div id="toolbar-hint">Scroll or 1–8 to select &nbsp;|&nbsp; C: Crafting &nbsp;|&nbsp; ESC: Pause &nbsp;|&nbsp; Left-click: Fire</div>
+        <div id="toolbar-hint">Scroll or 1–8 to select &nbsp;|&nbsp; C: Crafting &nbsp;|&nbsp; ESC: Pause &nbsp;|&nbsp; Tab: Settings &nbsp;|&nbsp; Left-click: Fire &nbsp;|&nbsp; Right-click: Place Block</div>
       </div>
     </div>
   </div>

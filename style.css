@@ -87,6 +87,12 @@ body {
   color: rgba(255, 255, 255, 0.6);
 }
 
+#kills-display {
+  font-size: 11px;
+  color: rgba(255, 120, 120, 0.8);
+  margin-left: 12px;
+}
+
 /* ── Toolbar ── */
 #toolbar-container {
   position: absolute;
@@ -218,6 +224,14 @@ body {
   width: 10px;
   height: 10px;
   border-radius: 50%;
+}
+
+.inv-chip .chip-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  border-radius: 2px;
 }
 
 #crafting-recipes {

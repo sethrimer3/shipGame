@@ -1,4 +1,4 @@
-import { Vec2, len, dist, Material, MATERIAL_PROPS } from './types';
+import { Vec2, len, dist, Material, MATERIAL_PROPS, pickGem } from './types';
 import { Asteroid }  from './asteroid';
 import { Enemy }     from './enemy';
 import { Particle }  from './particle';
@@ -13,6 +13,10 @@ const STAR_DENSITY        = 80; // stars per chunk
 
 // How many chunks around the camera we keep active
 const ACTIVE_RADIUS = 3;
+
+// Gem cluster spawning
+const GEM_CLUSTERS_PER_CHUNK = 2;
+const GEM_CLUSTER_CHANCE     = 0.35; // probability per attempt
 
 // ── Simple seeded pseudo-random (deterministic per chunk coord) ────────────
 function mulberry32(seed: number): () => number {
@@ -79,6 +83,18 @@ export class World {
       const ax   = baseX + 60 + rng() * (CHUNK_SIZE - 120);
       const ay   = baseY + 60 + rng() * (CHUNK_SIZE - 120);
       asteroids.push(new Asteroid({ x: ax, y: ay }, cols, rows, distFromOrigin, rng));
+    }
+
+    // ── Gem clusters (small pure-gem nodes) ───────────────────────
+    for (let i = 0; i < GEM_CLUSTERS_PER_CHUNK; i++) {
+      if (rng() > GEM_CLUSTER_CHANCE) continue;
+      const gemType = pickGem(distFromOrigin, rng);
+      if (!gemType) continue;
+      const cols = 1 + Math.floor(rng() * 2); // 1–2 cols
+      const rows = 1 + Math.floor(rng() * 2); // 1–2 rows
+      const gx   = baseX + 60 + rng() * (CHUNK_SIZE - 120);
+      const gy   = baseY + 60 + rng() * (CHUNK_SIZE - 120);
+      asteroids.push(new Asteroid({ x: gx, y: gy }, cols, rows, distFromOrigin, rng, gemType));
     }
 
     // ── Enemies ────────────────────────────────────────────────────

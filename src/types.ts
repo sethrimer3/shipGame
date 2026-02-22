@@ -23,12 +23,23 @@ export function cloneVec2(v: Vec2): Vec2 { return { x: v.x, y: v.y }; }
 
 // ── Material system ───────────────────────────────────────────────────────────
 export enum Material {
-  Rock     = 'Rock',
-  Iron     = 'Iron',
-  Gold     = 'Gold',
-  Crystal  = 'Crystal',
-  Titanium = 'Titanium',
-  Darkite  = 'Darkite',
+  Rock      = 'Rock',
+  Iron      = 'Iron',
+  Gold      = 'Gold',
+  Crystal   = 'Crystal',
+  Titanium  = 'Titanium',
+  Darkite   = 'Darkite',
+  // Gem minerals (ascending rarity 1–10)
+  Quartz    = 'Quartz',
+  Ruby      = 'Ruby',
+  Sunstone  = 'Sunstone',
+  Citrine   = 'Citrine',
+  Emerald   = 'Emerald',
+  Sapphire  = 'Sapphire',
+  Iolite    = 'Iolite',
+  Amethyst  = 'Amethyst',
+  Diamond   = 'Diamond',
+  Voidstone = 'Voidstone',
 }
 
 export interface MaterialProps {
@@ -37,23 +48,71 @@ export interface MaterialProps {
   rarity:    number;  // 0=common … 1=very rare
   minDist:   number;  // minimum world distance from origin to spawn (px)
   value:     number;  // crafting "weight"
+  sprite?:   string;  // optional icon sprite path (relative to index.html)
 }
 
+const GEM_ICON = (name: string) =>
+  `ASSETS/SPRITES/RESOURCES/resourceICONS/${name}.png`;
+
 export const MATERIAL_PROPS: Record<Material, MaterialProps> = {
-  [Material.Rock]:     { color: '#8d8d8d', hardness: 20,  rarity: 0.00, minDist: 0,      value: 1  },
-  [Material.Iron]:     { color: '#c07840', hardness: 40,  rarity: 0.20, minDist: 800,    value: 3  },
-  [Material.Gold]:     { color: '#f1c40f', hardness: 30,  rarity: 0.45, minDist: 2000,   value: 8  },
-  [Material.Crystal]:  { color: '#7ed6f3', hardness: 25,  rarity: 0.65, minDist: 4000,   value: 15 },
-  [Material.Titanium]: { color: '#d0e8ff', hardness: 80,  rarity: 0.80, minDist: 7000,   value: 30 },
-  [Material.Darkite]:  { color: '#9b59b6', hardness: 100, rarity: 0.93, minDist: 12000,  value: 60 },
+  [Material.Rock]:      { color: '#8d8d8d', hardness: 20,  rarity: 0.00, minDist: 0,      value: 1   },
+  [Material.Iron]:      { color: '#c07840', hardness: 40,  rarity: 0.20, minDist: 800,    value: 3   },
+  [Material.Gold]:      { color: '#f1c40f', hardness: 30,  rarity: 0.45, minDist: 2000,   value: 8   },
+  [Material.Crystal]:   { color: '#7ed6f3', hardness: 25,  rarity: 0.65, minDist: 4000,   value: 15  },
+  [Material.Titanium]:  { color: '#d0e8ff', hardness: 80,  rarity: 0.80, minDist: 7000,   value: 30  },
+  [Material.Darkite]:   { color: '#9b59b6', hardness: 100, rarity: 0.93, minDist: 12000,  value: 60  },
+  // Gems
+  [Material.Quartz]:    { color: '#e8e4d0', hardness: 30,  rarity: 0.05, minDist: 300,    value: 5,   sprite: GEM_ICON('quartz')    },
+  [Material.Ruby]:      { color: '#c0392b', hardness: 35,  rarity: 0.20, minDist: 800,    value: 10,  sprite: GEM_ICON('ruby')      },
+  [Material.Sunstone]:  { color: '#e8891a', hardness: 40,  rarity: 0.33, minDist: 1400,   value: 14,  sprite: GEM_ICON('sunstone')  },
+  [Material.Citrine]:   { color: '#f4d03f', hardness: 45,  rarity: 0.45, minDist: 2000,   value: 18,  sprite: GEM_ICON('citrine')   },
+  [Material.Emerald]:   { color: '#27ae60', hardness: 50,  rarity: 0.57, minDist: 3000,   value: 25,  sprite: GEM_ICON('emerald')   },
+  [Material.Sapphire]:  { color: '#2980b9', hardness: 55,  rarity: 0.67, minDist: 4500,   value: 35,  sprite: GEM_ICON('sapphire')  },
+  [Material.Iolite]:    { color: '#5d6dbf', hardness: 60,  rarity: 0.75, minDist: 6000,   value: 48,  sprite: GEM_ICON('iolite')    },
+  [Material.Amethyst]:  { color: '#9b59b6', hardness: 65,  rarity: 0.83, minDist: 8000,   value: 65,  sprite: GEM_ICON('amethyst')  },
+  [Material.Diamond]:   { color: '#d0eeff', hardness: 90,  rarity: 0.91, minDist: 11000,  value: 90,  sprite: GEM_ICON('diamond')   },
+  [Material.Voidstone]: { color: '#6c3483', hardness: 120, rarity: 0.97, minDist: 16000,  value: 130, sprite: GEM_ICON('VoidStone') },
 };
 
 /** Returns a weighted random material appropriate for a given world distance. */
 export function pickMaterial(distFromOrigin: number, rng: () => number): Material {
-  const candidates = (Object.values(Material) as Material[]).filter(
+  const ORE_MATERIALS: Material[] = [
+    Material.Rock, Material.Iron, Material.Gold,
+    Material.Crystal, Material.Titanium, Material.Darkite,
+  ];
+  const candidates = ORE_MATERIALS.filter(
     m => distFromOrigin >= MATERIAL_PROPS[m].minDist
   );
   // Weight by inverse rarity so common materials appear more often
+  const weights = candidates.map(m => 1 - MATERIAL_PROPS[m].rarity + 0.05);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = rng() * total;
+  for (let i = 0; i < candidates.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return candidates[i];
+  }
+  return candidates[candidates.length - 1];
+}
+
+/** All gem materials in ascending rarity order. */
+export const GEM_MATERIALS: Material[] = [
+  Material.Quartz, Material.Ruby, Material.Sunstone, Material.Citrine,
+  Material.Emerald, Material.Sapphire, Material.Iolite, Material.Amethyst,
+  Material.Diamond, Material.Voidstone,
+];
+
+/**
+ * Returns a random gem material available at the given world distance,
+ * weighted so rarer gems become more common deeper into the world.
+ * Returns null if no gem is unlocked at this distance.
+ */
+export function pickGem(distFromOrigin: number, rng: () => number): Material | null {
+  const candidates = GEM_MATERIALS.filter(
+    m => distFromOrigin >= MATERIAL_PROPS[m].minDist
+  );
+  if (candidates.length === 0) return null;
+  // Weight toward rarer gems deeper in the world; +0.05 floor ensures every
+  // eligible gem always has a non-zero chance of being selected.
   const weights = candidates.map(m => 1 - MATERIAL_PROPS[m].rarity + 0.05);
   const total = weights.reduce((a, b) => a + b, 0);
   let r = rng() * total;
@@ -152,6 +211,24 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     outputId:    'mining_laser',
     outputQty:   1,
   },
+  {
+    id:          'void_lance',
+    name:        'Void Lance',
+    description: 'Fires a bolt of void energy. Devastating damage at any range.',
+    icon:        '🌑',
+    inputs:      [{ material: Material.Voidstone, quantity: 3 }, { material: Material.Darkite, quantity: 2 }],
+    outputId:    'void_lance',
+    outputQty:   1,
+  },
+  {
+    id:          'resonance_beam',
+    name:        'Resonance Beam',
+    description: 'Diamond-tuned laser with extreme fire rate.',
+    icon:        '💎',
+    inputs:      [{ material: Material.Diamond, quantity: 3 }, { material: Material.Crystal, quantity: 2 }],
+    outputId:    'resonance_beam',
+    outputQty:   1,
+  },
 ];
 
 export interface ToolbarItemDef {
@@ -198,5 +275,15 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
     id: 'dark_engine', name: 'Dark Engine', icon: '🌀', color: '#9b59b6',
     type: 'upgrade', damage: 0, fireRate: 0, projectileSpeed: 0,
     projectileColor: '#9b59b6', projectileRadius: 0,
+  },
+  void_lance: {
+    id: 'void_lance', name: 'Void Lance', icon: '🌑', color: '#6c3483',
+    type: 'weapon', damage: 80, fireRate: 0.8, projectileSpeed: 750,
+    projectileColor: '#b044ff', projectileRadius: 7,
+  },
+  resonance_beam: {
+    id: 'resonance_beam', name: 'Resonance Beam', icon: '💎', color: '#d0eeff',
+    type: 'weapon', damage: 12, fireRate: 12, projectileSpeed: 1100,
+    projectileColor: '#aaddff', projectileRadius: 2,
   },
 };

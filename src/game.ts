@@ -44,7 +44,7 @@ class Game {
   private _settingsOpen   = false;
   private _settingsKeyHeld = false;
   /** When true (default), WASD moves relative to ship facing. When false, WASD = world axes. */
-  private advancedMovement = true;
+  private advancedMovement = false;
   /** Cooldown for the placer laser. */
   private _placerCooldown = 0;
 
@@ -186,13 +186,14 @@ class Game {
     this._placerCooldown -= dt;
     const selectedItem = this.player.equippedItems[this.toolbar.selected];
     if (selectedItem?.type === 'placer' && this.input.mouseRightDown && this._placerCooldown <= 0) {
-      // Find the first material the player has in inventory
-      const mat = ALL_MATERIALS.find(m => this.player.getResource(m) > 0);
-      if (mat) {
+      if (this.player.getResource(Material.Dirt) > 0) {
         const worldPos = this.camera.screenToWorld(this.input.mousePos);
-        this.world.placeBlock(worldPos, mat);
-        this.player.addResource(mat, -1);
+        this.world.placeBlock(worldPos, Material.Dirt);
+        this.player.addResource(Material.Dirt, -1);
         this._placerCooldown = selectedItem.fireRate > 0 ? 1 / selectedItem.fireRate : DEFAULT_PLACER_COOLDOWN;
+      } else {
+        this.hud.showMessage('No Dirt – mine asteroid surfaces to collect it', 2);
+        this._placerCooldown = 1.5; // throttle message spam
       }
     }
 

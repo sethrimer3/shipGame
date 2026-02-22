@@ -23,15 +23,27 @@ export class Asteroid {
     this.width  = cols * BLOCK_SIZE;
     this.height = rows * BLOCK_SIZE;
 
+    // First pass: build the set of occupied cells using the ellipse shape
+    const occupied = new Set<string>();
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        // Carve out a rough elliptical shape by skipping corner blocks
         const cx = (c + 0.5) / cols - 0.5;
         const cy = (r + 0.5) / rows - 0.5;
         const ellipse = (cx * cx) / 0.25 + (cy * cy) / 0.25;
         if (ellipse > 1 + (rng() - 0.5) * 0.6) continue;
+        occupied.add(`${c},${r}`);
+      }
+    }
 
-        const mat = forcedMaterial ?? pickMaterial(distFromOrigin, rng);
+    // Second pass: create blocks; outer-perimeter cells become Dirt (unless forced)
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!occupied.has(`${c},${r}`)) continue;
+        const isOuter = !forcedMaterial && (
+          !occupied.has(`${c+1},${r}`) || !occupied.has(`${c-1},${r}`) ||
+          !occupied.has(`${c},${r+1}`) || !occupied.has(`${c},${r-1}`)
+        );
+        const mat = isOuter ? Material.Dirt : (forcedMaterial ?? pickMaterial(distFromOrigin, rng));
         this.blocks.push(new Block(mat, c, r));
       }
     }

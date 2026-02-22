@@ -23,6 +23,7 @@ export function cloneVec2(v: Vec2): Vec2 { return { x: v.x, y: v.y }; }
 
 // ── Material system ───────────────────────────────────────────────────────────
 export enum Material {
+  Dirt      = 'Dirt',
   Rock      = 'Rock',
   Iron      = 'Iron',
   Gold      = 'Gold',
@@ -55,6 +56,7 @@ const GEM_ICON = (name: string) =>
   `ASSETS/SPRITES/RESOURCES/resourceICONS/${name}.png`;
 
 export const MATERIAL_PROPS: Record<Material, MaterialProps> = {
+  [Material.Dirt]:      { color: '#966b3e', hardness: 10,  rarity: 0.00, minDist: 0,      value: 1   },
   [Material.Rock]:      { color: '#8d8d8d', hardness: 20,  rarity: 0.00, minDist: 0,      value: 1   },
   [Material.Iron]:      { color: '#c07840', hardness: 40,  rarity: 0.20, minDist: 800,    value: 3   },
   [Material.Gold]:      { color: '#f1c40f', hardness: 30,  rarity: 0.45, minDist: 2000,   value: 8   },

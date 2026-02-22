@@ -486,3 +486,122 @@ body {
 #notification.visible {
   opacity: 1;
 }
+
+/* ── Ship Editor Panel ── */
+#ship-editor-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(8, 18, 26, 0.96);
+  border: 1px solid rgba(120, 220, 255, 0.45);
+  border-radius: 8px;
+  padding: 20px;
+  width: 420px;
+  pointer-events: all;
+  z-index: 100;
+}
+
+#ship-editor-panel h2 {
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: #7ecfff;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.editor-subtitle {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 10px;
+}
+
+#ship-editor-stats {
+  font-size: 11px;
+  color: rgba(255,255,255,0.75);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.editor-stat {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+#ship-editor-modules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-module-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+}
+
+.editor-module-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.editor-module-name {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.editor-module-desc {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+}
+
+.editor-module-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-module-count {
+  min-width: 24px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.editor-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(126, 207, 255, 0.5);
+  background: rgba(126, 207, 255, 0.12);
+  color: #a6e5ff;
+  font-weight: bold;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.editor-btn:hover {
+  background: rgba(126, 207, 255, 0.3);
+}
+
+#close-ship-editor {
+  margin-top: 14px;
+  padding: 6px 16px;
+  background: rgba(255, 80, 80, 0.15);
+  border: 1px solid rgba(255, 80, 80, 0.4);
+  border-radius: 4px;
+  color: #ff9090;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: all;
+}

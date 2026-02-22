@@ -11,6 +11,10 @@ const THRUST_FORCE  = 700;  // px/s²
 const MAX_SPEED     = 900;  // px/s
 const DRAG          = 0.92; // velocity multiplier per frame (applied per-second in dt)
 const SHIP_RADIUS   = 16;
+const BOOST_MULTIPLIER = 2;
+const OVERHEAT_MAX = 100;
+const OVERHEAT_DRAIN_RATE = 25;
+const OVERHEAT_RECHARGE_RATE = 18;
 
 export class Player {
   pos: Vec2  = { x: 0, y: 0 };
@@ -46,6 +50,7 @@ export class Player {
   equippedItems: (ToolbarItemDef | null)[] = Array(8).fill(null);
 
   private fireCooldown = 0;
+  private overheatMeter = OVERHEAT_MAX;
 
   constructor(
     private readonly input:    InputManager,
@@ -59,6 +64,7 @@ export class Player {
   ) {}
 
   get alive(): boolean { return this.hp > 0; }
+  get overheatRatio(): number { return this.overheatMeter / OVERHEAT_MAX; }
 
   /** XP required to reach the next level. */
   xpToNextLevel(): number { return this.level * 100; }
@@ -119,7 +125,9 @@ export class Player {
     // perpCW: 90° clockwise in screen space → ship's right (D)
     const rightVec  = perpCW(forward);
 
-    const thrust = THRUST_FORCE * this.thrustMultiplier;
+    const boostActive = this.input.isDown('shift') && this.overheatMeter > 0;
+    const speedMultiplier = boostActive ? BOOST_MULTIPLIER : 1;
+    const thrust = THRUST_FORCE * this.thrustMultiplier * speedMultiplier;
     let ax = 0, ay = 0;
 
     if (advancedMovement) {
@@ -136,14 +144,16 @@ export class Player {
       if (this.input.isDown('d')) ax += thrust;
     }
 
+    const accelerating = ax !== 0 || ay !== 0;
+
     // ── Physics ───────────────────────────────────────────────────
     this.vel.x += ax * dt;
     this.vel.y += ay * dt;
 
     const spd = len(this.vel);
-    if (spd > MAX_SPEED * this.thrustMultiplier) {
+    if (spd > MAX_SPEED * this.thrustMultiplier * speedMultiplier) {
       const n   = normalize(this.vel);
-      this.vel  = scale(n, MAX_SPEED * this.thrustMultiplier);
+      this.vel  = scale(n, MAX_SPEED * this.thrustMultiplier * speedMultiplier);
     }
 
     // Apply drag each second scaled by dt
@@ -161,13 +171,24 @@ export class Player {
     // ── Firing ────────────────────────────────────────────────────
     this.fireCooldown -= dt;
     const weapon = this.equippedItems[selectedSlot];
+    const boostedFireRate = boostActive ? BOOST_MULTIPLIER : 1;
     if (weapon && (weapon.type === 'weapon' || weapon.type === 'tool') &&
         this.input.mouseDown && this.fireCooldown <= 0) {
-      this.fireCooldown = 1 / weapon.fireRate;
+      this.fireCooldown = 1 / (weapon.fireRate * boostedFireRate);
       projectiles.push(new Projectile(
         this.pos, forward, weapon.projectileSpeed,
         weapon.damage, weapon.projectileRadius, weapon.projectileColor, 'player',
       ));
+    }
+
+    const tryingToFire = !!weapon && this.input.mouseDown;
+
+    let drainMultiplier = 0;
+    if (boostActive && (accelerating || tryingToFire)) {
+      drainMultiplier = accelerating && tryingToFire ? 2 : 1;
+      this.overheatMeter = Math.max(0, this.overheatMeter - OVERHEAT_DRAIN_RATE * drainMultiplier * dt);
+    } else {
+      this.overheatMeter = Math.min(OVERHEAT_MAX, this.overheatMeter + OVERHEAT_RECHARGE_RATE * dt);
     }
   }
 

@@ -22,6 +22,7 @@ export class HUD {
   private readonly healthBar  = document.getElementById('health-bar')    as HTMLDivElement;
   private readonly shieldBar  = document.getElementById('shield-bar')    as HTMLDivElement;
   private readonly xpBar      = document.getElementById('xp-bar')        as HTMLDivElement;
+  private readonly overheatBar = document.getElementById('overheat-bar')  as HTMLDivElement;
   private readonly levelDisp  = document.getElementById('level-display') as HTMLDivElement;
   private readonly coordsDisp = document.getElementById('coords-display') as HTMLDivElement;
   private readonly killsDisp  = document.getElementById('kills-display')  as HTMLDivElement | null;
@@ -35,6 +36,7 @@ export class HUD {
     this.shieldBar.style.width = `${(player.shield / player.maxShield) * 100}%`;
 
     this.xpBar.style.width     = `${(player.xp / player.xpToNextLevel()) * 100}%`;
+    this.overheatBar.style.width = `${player.overheatRatio * 100}%`;
     this.levelDisp.textContent = `Lv ${player.level}`;
 
     const x = Math.round(player.pos.x);

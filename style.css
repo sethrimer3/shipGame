@@ -93,6 +93,14 @@ body {
   margin-left: 12px;
 }
 
+#zone-display {
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: 12px;
+  letter-spacing: 1px;
+  color: #2ecc71;
+}
+
 /* ── Toolbar ── */
 #toolbar-container {
   position: absolute;

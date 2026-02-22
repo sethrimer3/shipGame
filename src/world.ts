@@ -1,4 +1,4 @@
-import { Vec2, len, dist, Material, MATERIAL_PROPS, pickGem } from './types';
+import { Vec2, len, dist, Material, MATERIAL_PROPS, pickMaterial, pickGem } from './types';
 import { Asteroid }  from './asteroid';
 import { Enemy }     from './enemy';
 import { Particle }  from './particle';
@@ -17,6 +17,19 @@ const ACTIVE_RADIUS = 3;
 // Gem cluster spawning
 const GEM_CLUSTERS_PER_CHUNK = 2;
 const GEM_CLUSTER_CHANCE     = 0.35; // probability per attempt
+
+const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
+const PICKUP_LIFETIME       = 20;   // seconds before despawn
+
+// ── Floating resource pickup ──────────────────────────────────────────────────
+interface ResourcePickup {
+  pos:      Vec2;
+  vel:      Vec2;
+  material: Material;
+  qty:      number;
+  lifetime: number;
+  maxLife:  number;
+}
 
 // ── Simple seeded pseudo-random (deterministic per chunk coord) ────────────
 function mulberry32(seed: number): () => number {
@@ -47,6 +60,9 @@ interface Chunk {
 export class World {
   private readonly chunks = new Map<string, Chunk>();
   private readonly debris: Particle[] = [];   // block destruction particles
+
+  /** Floating resource pickups dropped by enemies. */
+  pickups: ResourcePickup[] = [];
 
   /** Accumulated enemy kills – could be used for score */
   kills = 0;
@@ -192,6 +208,21 @@ export class World {
             const killed = enemy.damage(proj.damage, particles, Math.random);
             if (killed) {
               this.kills++;
+              // ── Loot drop ──────────────────────────────────────────
+              if (Math.random() < enemy.tier.dropChance) {
+                const dropDist = len(enemy.pos);
+                const mat = pickMaterial(dropDist, Math.random);
+                const qty = 1 + Math.floor(Math.random() * 3);
+                const ang = Math.random() * Math.PI * 2;
+                this.pickups.push({
+                  pos:      { x: enemy.pos.x, y: enemy.pos.y },
+                  vel:      { x: Math.cos(ang) * 50, y: Math.sin(ang) * 50 },
+                  material: mat,
+                  qty,
+                  lifetime: PICKUP_LIFETIME,
+                  maxLife:  PICKUP_LIFETIME,
+                });
+              }
             }
           }
         }
@@ -206,6 +237,20 @@ export class World {
         }
       }
     }
+
+    // ── Pickup update & collection ────────────────────────────────
+    for (const p of this.pickups) {
+      p.lifetime -= dt;
+      p.pos.x += p.vel.x * dt;
+      p.pos.y += p.vel.y * dt;
+      p.vel.x *= 0.98;
+      p.vel.y *= 0.98;
+      if (dist(p.pos, player.pos) < PICKUP_COLLECT_RADIUS) {
+        player.addResource(p.material, p.qty);
+        p.lifetime = 0; // mark collected
+      }
+    }
+    this.pickups = this.pickups.filter(p => p.lifetime > 0);
   }
 
   draw(ctx: CanvasRenderingContext2D, camPos: Vec2): void {
@@ -234,5 +279,42 @@ export class World {
         enemy.draw(ctx);
       }
     }
+
+    // ── Resource pickups ───────────────────────────────────────────
+    const now = Date.now();
+    for (const p of this.pickups) {
+      const fade  = Math.min(1, p.lifetime / 3); // fade out last 3 s
+      const pulse = 0.65 + Math.sin(now / 300) * 0.25;
+      const props = MATERIAL_PROPS[p.material];
+      ctx.save();
+      ctx.globalAlpha = fade * pulse;
+      ctx.shadowColor = props.color;
+      ctx.shadowBlur  = 8;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = props.color;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = fade * 0.85;
+      ctx.fillStyle = props.color;
+      ctx.font = '9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 9);
+      ctx.restore();
+    }
+  }
+
+  /** Returns entity positions for the minimap. */
+  getMinimapData(camPos: Vec2): { enemies: Vec2[]; asteroids: Vec2[]; pickups: Vec2[] } {
+    const chunks    = this._activeChunks(camPos);
+    const enemies:   Vec2[] = [];
+    const asteroids: Vec2[] = [];
+    const pickupPos: Vec2[] = [];
+    for (const chunk of chunks) {
+      for (const e of chunk.enemies)   if (e.alive) enemies.push({ ...e.pos });
+      for (const a of chunk.asteroids) if (a.alive) asteroids.push({ ...a.centre });
+    }
+    for (const p of this.pickups) pickupPos.push({ ...p.pos });
+    return { enemies, asteroids, pickups: pickupPos };
   }
 }

@@ -79,7 +79,10 @@ class Game {
 
   // ── Update ─────────────────────────────────────────────────────────────────
   private update(dt: number): void {
-    if (!this.player.alive) return;
+    if (!this.player.alive) {
+      if (this.input.isDown('r')) window.location.reload();
+      return;
+    }
 
     // ── Toolbar navigation ──────────────────────────────────────────
     const scroll = this.input.consumeScroll();
@@ -155,6 +158,9 @@ class Game {
 
     this.camera.end(ctx);
 
+    // ── Minimap ────────────────────────────────────────────────────
+    if (this.player.alive) this._drawMinimap(ctx);
+
     // ── Game-over overlay ──────────────────────────────────────────
     if (!this.player.alive) {
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
@@ -166,8 +172,86 @@ class Game {
       ctx.fillStyle = '#fff';
       ctx.font      = '20px Courier New';
       ctx.fillText(`Kills: ${this.world.kills}`, canvas.width / 2, canvas.height / 2 + 24);
-      ctx.fillText('Refresh to restart', canvas.width / 2, canvas.height / 2 + 56);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font      = '16px Courier New';
+      ctx.fillText('Press R to restart', canvas.width / 2, canvas.height / 2 + 58);
     }
+  }
+
+  // ── Minimap ────────────────────────────────────────────────────────────────
+  private _drawMinimap(ctx: CanvasRenderingContext2D): void {
+    const SIZE   = 150;
+    const RANGE  = 2000; // world-unit radius visible on map
+    const MARGIN = 14;
+    const mx = this.canvas.width - SIZE - MARGIN;
+    const my = MARGIN;
+
+    ctx.save();
+
+    // Background + border
+    ctx.fillStyle   = 'rgba(0, 5, 12, 0.70)';
+    ctx.strokeStyle = 'rgba(80, 200, 255, 0.35)';
+    ctx.lineWidth   = 1;
+    ctx.fillRect(mx, my, SIZE, SIZE);
+    ctx.strokeRect(mx, my, SIZE, SIZE);
+
+    // Clip to minimap bounds
+    ctx.beginPath();
+    ctx.rect(mx, my, SIZE, SIZE);
+    ctx.clip();
+
+    const scale  = SIZE / (RANGE * 2);
+    const cx     = mx + SIZE / 2;
+    const cy     = my + SIZE / 2;
+    const player = this.player;
+
+    const toMap = (wp: { x: number; y: number }): { x: number; y: number } => ({
+      x: cx + (wp.x - player.pos.x) * scale,
+      y: cy + (wp.y - player.pos.y) * scale,
+    });
+
+    const { enemies, asteroids, pickups } = this.world.getMinimapData(this.camera.position);
+
+    // Asteroids (dim gray squares)
+    ctx.fillStyle = 'rgba(160, 160, 160, 0.35)';
+    for (const a of asteroids) {
+      const p = toMap(a);
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+
+    // Pickups (yellow dots)
+    ctx.fillStyle = '#f1c40f';
+    for (const pk of pickups) {
+      const p = toMap(pk);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Enemies (red dots)
+    ctx.fillStyle = '#e74c3c';
+    for (const e of enemies) {
+      const p = toMap(e);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Player (bright green dot)
+    ctx.fillStyle   = '#2ecc71';
+    ctx.shadowColor = '#2ecc71';
+    ctx.shadowBlur  = 6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Compass label
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font      = '8px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('N', cx, my + 9);
   }
 }
 

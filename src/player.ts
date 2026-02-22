@@ -66,6 +66,14 @@ export class Player {
   get alive(): boolean { return this.hp > 0; }
   get overheatRatio(): number { return this.overheatMeter / OVERHEAT_MAX; }
 
+  getMuzzleWorldPos(): Vec2 {
+    const forward = fromAngle(this.angle);
+    return {
+      x: this.pos.x + forward.x * 18,
+      y: this.pos.y + forward.y * 18,
+    };
+  }
+
   /** XP required to reach the next level. */
   xpToNextLevel(): number { return this.level * 100; }
 
@@ -189,6 +197,32 @@ export class Player {
       this.overheatMeter = Math.max(0, this.overheatMeter - OVERHEAT_DRAIN_RATE * drainMultiplier * dt);
     } else {
       this.overheatMeter = Math.min(OVERHEAT_MAX, this.overheatMeter + OVERHEAT_RECHARGE_RATE * dt);
+    }
+
+    const heat = 1 - this.overheatRatio;
+    if (heat > 0.05) {
+      const spawnRate = 8 + heat * 30;
+      const spawnCount = Math.floor(spawnRate * dt);
+      const extra = Math.random() < (spawnRate * dt - spawnCount) ? 1 : 0;
+      const total = spawnCount + extra;
+      for (let i = 0; i < total; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = 6 + Math.random() * 12;
+        const speed = 10 + Math.random() * 30;
+        const shade = 120 + Math.floor(Math.random() * 120);
+        const red = 255;
+        const green = Math.min(220, shade);
+        const blue = Math.floor(Math.random() * 30);
+        particles.push({
+          pos: { x: this.pos.x + Math.cos(ang) * dist, y: this.pos.y + Math.sin(ang) * dist },
+          vel: { x: Math.cos(ang) * speed + this.vel.x * 0.08, y: Math.sin(ang) * speed + this.vel.y * 0.08 },
+          color: `rgb(${red},${green},${blue})`,
+          radius: 1 + Math.random() * 1.5,
+          lifetime: 0.2 + Math.random() * 0.35,
+          maxLife: 0.55,
+          alpha: 1,
+        });
+      }
     }
   }
 

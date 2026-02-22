@@ -47,6 +47,40 @@ const MODULE_EDITOR_CONFIG: ModuleEditorConfig[] = [
 ];
 
 const EDITOR_GRID_SIZE = 9;
+const EDITOR_CENTER = Math.floor(EDITOR_GRID_SIZE / 2);
+
+type EditorSlot = { row: number; col: number };
+
+const toEditorSlot = (shipCol: number, shipRow: number): EditorSlot => ({
+  row: EDITOR_CENTER + shipRow,
+  col: EDITOR_CENTER + shipCol,
+});
+
+// Keep this aligned with Player._buildShipBlocks so the editor layout matches the rendered ship silhouette.
+const HULL_EDITOR_SLOTS: EditorSlot[] = [
+  [0, 0], [1, 0], [0, -1], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, -1], [-1, 1],
+  [2, 0], [-2, 0], [0, -2], [0, 2], [2, -1], [2, 1], [-2, -1], [-2, 1],
+  [1, -2], [1, 2], [-1, -2], [-1, 2], [3, 0], [-3, 0],
+].map(([col, row]) => toEditorSlot(col, row));
+
+const ENGINE_EDITOR_SLOTS: EditorSlot[] = [
+  [-3, -1], [-3, 1], [-4, 0], [-4, -1], [-4, 1],
+].map(([col, row]) => toEditorSlot(col, row));
+
+const SHIELD_EDITOR_SLOTS: EditorSlot[] = [
+  [0, -3], [0, 3], [1, -3], [1, 3], [-1, -3], [-1, 3],
+].map(([col, row]) => toEditorSlot(col, row));
+
+const COOLANT_EDITOR_SLOTS: EditorSlot[] = [
+  [-2, -2], [-2, 2], [-3, -2], [-3, 2],
+].map(([col, row]) => toEditorSlot(col, row));
+
+const EDITOR_SLOT_ORDER: EditorSlot[] = [
+  ...HULL_EDITOR_SLOTS,
+  ...ENGINE_EDITOR_SLOTS,
+  ...SHIELD_EDITOR_SLOTS,
+  ...COOLANT_EDITOR_SLOTS,
+];
 
 
 class Game {
@@ -374,14 +408,13 @@ class Game {
     const gridRoot = document.getElementById('ship-editor-grid');
     if (gridRoot) {
       gridRoot.innerHTML = '';
-      const center = Math.floor(EDITOR_GRID_SIZE / 2);
       for (let row = 0; row < EDITOR_GRID_SIZE; row++) {
         for (let col = 0; col < EDITOR_GRID_SIZE; col++) {
           const cell = document.createElement('div');
           cell.className = 'editor-grid-cell';
           cell.dataset.row = String(row);
           cell.dataset.col = String(col);
-          if (row === center && col === center) {
+          if (row === EDITOR_CENTER && col === EDITOR_CENTER) {
             cell.dataset.locked = 'true';
             cell.classList.add('core');
           }
@@ -496,24 +529,15 @@ class Game {
   }
 
   private _gridSlotsForModules(modules: ShipModules): Array<{ row: number; col: number; type: ShipModuleType }> {
-    const center = Math.floor(EDITOR_GRID_SIZE / 2);
-    const positions: Array<{ row: number; col: number }> = [];
-    for (let row = 0; row < EDITOR_GRID_SIZE; row++) {
-      for (let col = 0; col < EDITOR_GRID_SIZE; col++) {
-        if (row === center && col === center) continue;
-        positions.push({ row, col });
-      }
-    }
-
     const types: ShipModuleType[] = [];
     for (const type of ['hull', 'engine', 'shield', 'coolant'] as ShipModuleType[]) {
       for (let i = 0; i < modules[type]; i++) types.push(type);
     }
 
-    const limit = Math.min(types.length, positions.length);
+    const limit = Math.min(types.length, EDITOR_SLOT_ORDER.length);
     const slots: Array<{ row: number; col: number; type: ShipModuleType }> = [];
     for (let i = 0; i < limit; i++) {
-      slots.push({ row: positions[i].row, col: positions[i].col, type: types[i] });
+      slots.push({ row: EDITOR_SLOT_ORDER[i].row, col: EDITOR_SLOT_ORDER[i].col, type: types[i] });
     }
     return slots;
   }

@@ -78,6 +78,8 @@ export class Enemy {
   }
 
   get radius(): number { return this.tier.radius; }
+  /** Physics mass used for ship–asteroid impulse resolution. */
+  get mass():   number { return this.tier.radius * 20; }
 
   private _randomPatrolPoint(): Vec2 {
     const range = 300;

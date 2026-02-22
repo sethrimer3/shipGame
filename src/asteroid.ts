@@ -8,6 +8,9 @@ export class Asteroid {
   readonly height: number;
   alive = true;
 
+  /** Current velocity (world units/s). Starts at rest; set by physics collisions. */
+  vel: Vec2 = { x: 0, y: 0 };
+
   constructor(
     public pos: Vec2,
     cols:  number,
@@ -81,6 +84,21 @@ export class Asteroid {
   /** Returns the material drop for a destroyed block. */
   static resourceDrop(mat: Material): { material: Material; qty: number } {
     return { material: mat, qty: Math.floor(Math.random() * 2) + 1 };
+  }
+
+  /** Advance asteroid position by its velocity and apply drag. */
+  update(dt: number): void {
+    const drag = Math.pow(0.80, dt * 60);
+    this.vel.x *= drag;
+    this.vel.y *= drag;
+    this.pos.x += this.vel.x * dt;
+    this.pos.y += this.vel.y * dt;
+  }
+
+  /** Mass proportional to the number of live blocks (used for impulse physics). */
+  get mass(): number {
+    const liveBlocks = this.blocks.filter(b => b.alive).length;
+    return Math.max(1, liveBlocks) * BLOCK_SIZE * BLOCK_SIZE * 3;
   }
 
   /** Rough world-space radius used for collision culling. */

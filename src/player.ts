@@ -34,6 +34,8 @@ export class Player {
   recentDamage = 0;
 
   readonly radius = SHIP_RADIUS;
+  /** Physics mass used for ship–asteroid impulse resolution. */
+  readonly mass   = 400;
 
   /** Raw material ore counts. */
   readonly inventory: Map<Material, InventoryItem> = new Map(

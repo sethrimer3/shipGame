@@ -1,6 +1,14 @@
 import { Vec2 } from './types';
 
 const ULTRA_SUN_BLOOM_STEPS = 4;
+const SHADOW_LENGTH = 3000;
+
+type ShadowQuad = {
+  sv1x: number; sv1y: number;
+  sv2x: number; sv2y: number;
+  ss1x: number; ss1y: number;
+  ss2x: number; ss2y: number;
+};
 
 type SunRenderCache = {
     plasmaLayerA: HTMLCanvasElement;
@@ -9,6 +17,14 @@ type SunRenderCache = {
 
 export class SunRenderer {
     private readonly sunRenderCacheByRadiusBucket = new Map<number, SunRenderCache>();
+
+    // ── Shadow / ray data ────────────────────────────────────────────────────
+    /** Offscreen canvas for compositing the lighting + shadow layer. */
+    private lightingLayerCanvas: HTMLCanvasElement | null = null;
+    private lightingLayerCtx:    CanvasRenderingContext2D | null = null;
+    /** Offscreen canvas for a single sun's ambient + shadow pass. */
+    private lightingSunPassCanvas: HTMLCanvasElement | null = null;
+    private lightingSunPassCtx:    CanvasRenderingContext2D | null = null;
 
     draw(
         ctx: CanvasRenderingContext2D,
@@ -231,5 +247,179 @@ export class SunRenderer {
         };
         this.sunRenderCacheByRadiusBucket.set(radiusBucket, cache);
         return cache;
+    }
+
+    private ensureLightingLayer(w: number, h: number): CanvasRenderingContext2D {
+        if (!this.lightingLayerCanvas || this.lightingLayerCanvas.width !== w || this.lightingLayerCanvas.height !== h) {
+            this.lightingLayerCanvas = document.createElement('canvas');
+            this.lightingLayerCanvas.width  = w;
+            this.lightingLayerCanvas.height = h;
+            this.lightingLayerCtx = this.lightingLayerCanvas.getContext('2d');
+            if (!this.lightingLayerCtx) throw new Error('Failed to get 2D context for lightingLayerCanvas');
+        }
+        const ctx = this.lightingLayerCtx!;
+        ctx.clearRect(0, 0, w, h);
+        return ctx;
+    }
+
+    private ensureSunPassLayer(w: number, h: number): CanvasRenderingContext2D {
+        if (!this.lightingSunPassCanvas || this.lightingSunPassCanvas.width !== w || this.lightingSunPassCanvas.height !== h) {
+            this.lightingSunPassCanvas = document.createElement('canvas');
+            this.lightingSunPassCanvas.width  = w;
+            this.lightingSunPassCanvas.height = h;
+            this.lightingSunPassCtx = this.lightingSunPassCanvas.getContext('2d');
+            if (!this.lightingSunPassCtx) throw new Error('Failed to get 2D context for lightingSunPassCanvas');
+        }
+        const ctx = this.lightingSunPassCtx!;
+        ctx.clearRect(0, 0, w, h);
+        return ctx;
+    }
+
+    private appendShadowQuadsFromVertices(
+        sunPos: Vec2,
+        worldVerts: Vec2[],
+        quads: ShadowQuad[],
+        worldToScreen: (p: Vec2) => Vec2,
+    ): void {
+        const n = worldVerts.length;
+        for (let i = 0; i < n; i++) {
+            const v1 = worldVerts[i];
+            const v2 = worldVerts[(i + 1) % n];
+
+            // Edge centre and vector to sun
+            const ecx = (v1.x + v2.x) * 0.5;
+            const ecy = (v1.y + v2.y) * 0.5;
+            const toSunX = sunPos.x - ecx;
+            const toSunY = sunPos.y - ecy;
+
+            // Outward edge normal (perpendicular to v1→v2, pointing right)
+            const edgeDx = v2.x - v1.x;
+            const edgeDy = v2.y - v1.y;
+            const normalX =  edgeDy;
+            const normalY = -edgeDx;
+
+            // Skip front-facing edges (facing toward the sun)
+            if (toSunX * normalX + toSunY * normalY >= 0) continue;
+
+            // Compute shadow tip points
+            const d1x = v1.x - sunPos.x;
+            const d1y = v1.y - sunPos.y;
+            const len1 = Math.sqrt(d1x * d1x + d1y * d1y);
+            const d2x = v2.x - sunPos.x;
+            const d2y = v2.y - sunPos.y;
+            const len2 = Math.sqrt(d2x * d2x + d2y * d2y);
+            if (len1 < 0.001 || len2 < 0.001) continue;
+
+            const shadow1: Vec2 = {
+                x: v1.x + d1x * (SHADOW_LENGTH / len1),
+                y: v1.y + d1y * (SHADOW_LENGTH / len1),
+            };
+            const shadow2: Vec2 = {
+                x: v2.x + d2x * (SHADOW_LENGTH / len2),
+                y: v2.y + d2y * (SHADOW_LENGTH / len2),
+            };
+
+            const sv1 = worldToScreen(v1);
+            const sv2 = worldToScreen(v2);
+            const ss1 = worldToScreen(shadow1);
+            const ss2 = worldToScreen(shadow2);
+
+            quads.push({
+                sv1x: sv1.x, sv1y: sv1.y,
+                sv2x: sv2.x, sv2y: sv2.y,
+                ss1x: ss1.x, ss1y: ss1.y,
+                ss2x: ss2.x, ss2y: ss2.y,
+            });
+        }
+    }
+
+    private buildShadowQuads(
+        sunPos: Vec2,
+        occluders: { verts: Vec2[] }[],
+        worldToScreen: (p: Vec2) => Vec2,
+    ): ShadowQuad[] {
+        const quads: ShadowQuad[] = [];
+        for (const occ of occluders) {
+            this.appendShadowQuadsFromVertices(sunPos, occ.verts, quads, worldToScreen);
+        }
+        return quads;
+    }
+
+    private aabbVerts(left: number, top: number, right: number, bottom: number): Vec2[] {
+        return [
+            { x: left,  y: top    },
+            { x: right, y: top    },
+            { x: right, y: bottom },
+            { x: left,  y: bottom },
+        ];
+    }
+
+    public drawSunRays(
+        ctx:           CanvasRenderingContext2D,
+        sunPos:        Vec2,
+        canvasWidth:   number,
+        canvasHeight:  number,
+        worldToScreen: (p: Vec2) => Vec2,
+        occluders:     { verts: Vec2[] }[],
+    ): void {
+        const sunScreen = worldToScreen(sunPos);
+        const maxRadius = Math.max(canvasWidth, canvasHeight) * 2;
+
+        const sunPassCtx = this.ensureSunPassLayer(canvasWidth, canvasHeight);
+
+        // Ambient radial gradient centred on the sun
+        const ambient = sunPassCtx.createRadialGradient(
+            sunScreen.x, sunScreen.y, 0,
+            sunScreen.x, sunScreen.y, maxRadius,
+        );
+        ambient.addColorStop(0,    'rgba(255,192,96,0.42)');
+        ambient.addColorStop(0.18, 'rgba(255,166,70,0.28)');
+        ambient.addColorStop(0.42, 'rgba(255,140,56,0.16)');
+        ambient.addColorStop(1,    'rgba(255,140,56,0)');
+        sunPassCtx.fillStyle = ambient;
+        sunPassCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        // Bloom (screen blend)
+        sunPassCtx.save();
+        sunPassCtx.globalCompositeOperation = 'screen';
+        const bloomRadius = maxRadius * 1.15;
+        const bloom = sunPassCtx.createRadialGradient(
+            sunScreen.x, sunScreen.y, 0,
+            sunScreen.x, sunScreen.y, bloomRadius,
+        );
+        bloom.addColorStop(0,    'rgba(255,220,140,0.18)');
+        bloom.addColorStop(0.25, 'rgba(255,190,100,0.10)');
+        bloom.addColorStop(1,    'rgba(255,140,56,0)');
+        sunPassCtx.fillStyle = bloom;
+        sunPassCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+        sunPassCtx.restore();
+
+        // Build and cut out shadow quads
+        const quads = this.buildShadowQuads(sunPos, occluders, worldToScreen);
+        if (quads.length > 0) {
+            sunPassCtx.save();
+            sunPassCtx.globalCompositeOperation = 'destination-out';
+            sunPassCtx.fillStyle = 'rgba(0,0,0,1)';
+            for (const q of quads) {
+                sunPassCtx.beginPath();
+                sunPassCtx.moveTo(q.sv1x, q.sv1y);
+                sunPassCtx.lineTo(q.sv2x, q.sv2y);
+                sunPassCtx.lineTo(q.ss2x, q.ss2y);
+                sunPassCtx.lineTo(q.ss1x, q.ss1y);
+                sunPassCtx.closePath();
+                sunPassCtx.fill();
+            }
+            sunPassCtx.restore();
+        }
+
+        // Blit sun pass onto lighting layer with lighter blend
+        const lightingCtx = this.ensureLightingLayer(canvasWidth, canvasHeight);
+        lightingCtx.save();
+        lightingCtx.globalCompositeOperation = 'lighter';
+        lightingCtx.drawImage(sunPassCtx.canvas, 0, 0);
+        lightingCtx.restore();
+
+        // Blit lighting layer onto main canvas
+        ctx.drawImage(lightingCtx.canvas, 0, 0);
     }
 }

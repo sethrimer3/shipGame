@@ -289,18 +289,37 @@ export function tierForDist(d: number): EnemyTier {
   return TIERS[0];
 }
 
+// ── Enemy module (one structural square on a ship) ────────────────────────────
+export interface EnemyModule {
+  col:       number;
+  row:       number;
+  hp:        number;
+  maxHp:     number;
+  alive:     boolean;
+  baseColor: string;
+  /** The CORE module; destroying it kills the whole ship. */
+  isCore:    boolean;
+}
+
+/** Data needed to spawn a floating debris fragment in the World. */
+export interface EnemyModuleFragment {
+  pos:   Vec2;
+  vel:   Vec2;
+  color: string;
+  size:  number;
+}
+
 // ── State machine ─────────────────────────────────────────────────────────────
 type EnemyState = 'patrol' | 'chase' | 'attack' | 'retreat';
 
-const RETREAT_HP_THRESHOLD    = 0.25; // fraction of maxHp below which an enemy retreats
+const RETREAT_HP_THRESHOLD    = 0.25; // module ratio below which an enemy retreats
 const RETREAT_DISTANCE_MULT   = 2.0;  // multiples of sightRange before retreat ends
-const RETREAT_RECOVERY_CAP    = 0.5;  // max HP fraction an enemy recovers to after retreating
-const RETREAT_RECOVERY_AMOUNT = 0.2;  // fraction of maxHp restored on successful retreat
+const RETREAT_RECOVERY_CAP    = 0.5;  // max module-HP fraction an enemy recovers to
+const RETREAT_RECOVERY_AMOUNT = 0.2;  // fraction of max module HP restored on retreat
 
 export class Enemy {
   vel:   Vec2  = { x: 0, y: 0 };
   angle: number = 0;
-  hp:    number;
   alive  = true;
 
   private state:        EnemyState = 'patrol';
@@ -309,6 +328,7 @@ export class Enemy {
   private stateTimer    = 0;
 
   readonly tier: EnemyTier;
+  readonly modules: EnemyModule[];
 
   constructor(
     public pos: Vec2,
@@ -316,13 +336,114 @@ export class Enemy {
     private rng: () => number,
   ) {
     this.tier         = tierForDist(distFromOrigin);
-    this.hp           = this.tier.maxHp;
+    this.modules      = this._buildModules();
     this.patrolTarget = this._randomPatrolPoint();
   }
 
   get radius(): number { return this.tier.radius; }
   /** Physics mass used for ship–asteroid impulse resolution. */
   get mass():   number { return this.tier.radius * 20; }
+
+  /** Block size for this enemy's tier. */
+  private get _blockSize(): number {
+    return Math.max(5, Math.round(this.tier.radius * 0.55));
+  }
+
+  /** Sum of HP across all alive modules. */
+  private get _totalHp(): number {
+    return this.modules.filter(m => m.alive).reduce((s, m) => s + m.hp, 0);
+  }
+
+  /** Sum of maxHp across all modules (constant; used for retreat threshold). */
+  private get _totalMaxHp(): number {
+    return this.modules.reduce((s, m) => s + m.maxHp, 0);
+  }
+
+  private static readonly _LARGE_MODULE_COUNT = 10;
+  private static readonly _SMALL_MODULE_COUNT = 5;
+
+  /** Build the initial module grid for this enemy's tier. */
+  private _buildModules(): EnemyModule[] {
+    const r = this.tier.radius;
+    const isLarge = r > 14;
+    const moduleCount = isLarge ? Enemy._LARGE_MODULE_COUNT : Enemy._SMALL_MODULE_COUNT;
+    const hpPerModule = this.tier.maxHp / moduleCount;
+    // [col, row, baseColor, isCore]
+    const defs: [number, number, string, boolean][] = isLarge
+      ? [
+          [ 1,  0, '#ff4444', false],
+          [ 0, -1, this.tier.color, false],
+          [ 0,  0, this.tier.color, true],   // CORE
+          [ 0,  1, this.tier.color, false],
+          [-1, -2, this.tier.color, false], [-1, -1, this.tier.color, false],
+          [-1,  0, this.tier.color, false],
+          [-1,  1, this.tier.color, false], [-1,  2, this.tier.color, false],
+          [-2,  0, '#7fd9ff', false],
+        ]
+      : [
+          [ 1,  0, '#ff4444', false],
+          [ 0, -1, this.tier.color, false],
+          [ 0,  0, this.tier.color, true],   // CORE
+          [ 0,  1, this.tier.color, false],
+          [-1,  0, '#7fd9ff', false],
+        ];
+    return defs.map(([col, row, baseColor, isCore]) => ({
+      col, row,
+      hp: hpPerModule, maxHp: hpPerModule,
+      alive: true, baseColor, isCore,
+    }));
+  }
+
+  /** World-space centre of a module, accounting for ship rotation. */
+  private _moduleWorldPos(m: EnemyModule): Vec2 {
+    const B = this._blockSize;
+    const lx = m.col * B;
+    const ly = m.row * B;
+    const cosA = Math.cos(this.angle);
+    const sinA = Math.sin(this.angle);
+    return {
+      x: this.pos.x + lx * cosA - ly * sinA,
+      y: this.pos.y + lx * sinA + ly * cosA,
+    };
+  }
+
+  /**
+   * BFS from CORE to find alive modules not connected to it.
+   * 4-connectivity: neighbours differ by 1 in exactly one axis.
+   */
+  private _findDisconnectedModules(): EnemyModule[] {
+    const core = this.modules.find(m => m.isCore && m.alive);
+    if (!core) return [];
+    const alive = this.modules.filter(m => m.alive);
+    const connected = new Set<EnemyModule>([core]);
+    const queue: EnemyModule[] = [core];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const m of alive) {
+        if (connected.has(m)) continue;
+        if ((Math.abs(m.col - cur.col) === 1 && m.row === cur.row) ||
+            (Math.abs(m.row - cur.row) === 1 && m.col === cur.col)) {
+          connected.add(m);
+          queue.push(m);
+        }
+      }
+    }
+    return alive.filter(m => !connected.has(m));
+  }
+
+  /** Build a fragment descriptor for a module, using rng for velocity randomness. */
+  private _makeFragment(m: EnemyModule, rng: () => number): EnemyModuleFragment {
+    const B = this._blockSize;
+    const wp = this._moduleWorldPos(m);
+    const ang = rng() * Math.PI * 2;
+    const speed = 20 + rng() * 80;
+    return {
+      pos:   { x: wp.x, y: wp.y },
+      vel:   { x: this.vel.x + Math.cos(ang) * speed, y: this.vel.y + Math.sin(ang) * speed },
+      color: m.baseColor,
+      size:  B,
+    };
+  }
 
   private _randomPatrolPoint(): Vec2 {
     const range = 300;
@@ -338,8 +459,8 @@ export class Enemy {
     // ── State transitions ──────────────────────────────────────────
     this.stateTimer += dt;
 
-    // Retreat when critically wounded (< 25% HP)
-    if (this.hp < this.tier.maxHp * RETREAT_HP_THRESHOLD && this.state !== 'retreat') {
+    // Retreat when critically wounded (< 25% of total module HP)
+    if (this._totalHp < this._totalMaxHp * RETREAT_HP_THRESHOLD && this.state !== 'retreat') {
       this.state      = 'retreat';
       this.stateTimer = 0;
     }
@@ -369,7 +490,14 @@ export class Enemy {
     } else if (this.state === 'retreat') {
       // Partially recover and re-enter patrol once far enough away
       if (distToPlayer > this.tier.sightRange * RETREAT_DISTANCE_MULT) {
-        this.hp    = Math.min(this.tier.maxHp * RETREAT_RECOVERY_CAP, this.hp + this.tier.maxHp * RETREAT_RECOVERY_AMOUNT);
+        // Restore module HP up to RETREAT_RECOVERY_CAP fraction of max
+        const cap    = this._totalMaxHp * RETREAT_RECOVERY_CAP;
+        const toHeal = Math.min(cap - this._totalHp, this._totalMaxHp * RETREAT_RECOVERY_AMOUNT);
+        if (toHeal > 0) {
+          const aliveModules = this.modules.filter(m => m.alive);
+          const healEach = toHeal / Math.max(1, aliveModules.length);
+          for (const m of aliveModules) m.hp = Math.min(m.maxHp, m.hp + healEach);
+        }
         this.state = 'patrol';
         this.stateTimer = 0;
         this.patrolTarget = this._randomPatrolPoint();
@@ -438,17 +566,72 @@ export class Enemy {
     }
   }
 
-  /** Deal damage; returns true if killed. */
-  damage(amount: number, particles: Particle[], rng: () => number): boolean {
-    this.hp -= amount;
-    // Hit spark
-    particles.push(...makeExplosion(this.pos, 4, '#ff8844', rng));
-    if (this.hp <= 0) {
-      this.alive = false;
-      particles.push(...makeExplosion(this.pos, 18, this.tier.color, rng));
-      return true;
+  /**
+   * Deal damage to the module nearest to `worldPos`.
+   * Returns whether the CORE was destroyed (ship killed) and any fragments
+   * that were disconnected.
+   */
+  damageAt(
+    worldPos:  Vec2,
+    amount:    number,
+    particles: Particle[],
+    rng:       () => number,
+  ): { killed: boolean; fragments: EnemyModuleFragment[] } {
+    const B = this._blockSize;
+
+    // Transform worldPos into ship-local space (rotate by -angle)
+    const dx   = worldPos.x - this.pos.x;
+    const dy   = worldPos.y - this.pos.y;
+    const cosA = Math.cos(-this.angle);
+    const sinA = Math.sin(-this.angle);
+    const lx   = dx * cosA - dy * sinA;
+    const ly   = dx * sinA + dy * cosA;
+
+    // Find the closest alive module to the transformed hit point
+    let closest: EnemyModule | null = null;
+    let minDist = Infinity;
+    for (const m of this.modules) {
+      if (!m.alive) continue;
+      const d = Math.hypot(lx - m.col * B, ly - m.row * B);
+      if (d < minDist) { minDist = d; closest = m; }
     }
-    return false;
+
+    if (!closest) return { killed: false, fragments: [] };
+
+    // Damage the module; show hit spark
+    closest.hp -= amount;
+    const wp = this._moduleWorldPos(closest);
+    particles.push(...makeExplosion(wp, 3, closest.baseColor, rng));
+
+    if (closest.hp > 0) return { killed: false, fragments: [] };
+
+    // Module destroyed
+    closest.alive = false;
+    const fragments: EnemyModuleFragment[] = [];
+
+    if (closest.isCore) {
+      // Core destroyed – violent explosion; all remaining modules fly off
+      this.alive = false;
+      particles.push(...makeExplosion(wp, 22, this.tier.color, rng));
+      for (const m of this.modules) {
+        if (!m.alive) continue;
+        m.alive = false;
+        fragments.push(this._makeFragment(m, rng));
+      }
+      return { killed: true, fragments };
+    }
+
+    // Non-core module: small explosion
+    particles.push(...makeExplosion(wp, 7, '#888888', rng));
+
+    // Check for disconnected groups and detach them
+    const disconnected = this._findDisconnectedModules();
+    for (const m of disconnected) {
+      m.alive = false;
+      fragments.push(this._makeFragment(m, rng));
+    }
+
+    return { killed: false, fragments };
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
@@ -456,30 +639,23 @@ export class Enemy {
     ctx.translate(this.pos.x, this.pos.y);
     ctx.rotate(this.angle);
 
-    const r = this.tier.radius;
-    // Block size scales with tier radius; each ship is a small grid of squares
-    const B = Math.max(5, Math.round(r * 0.55));
-    // [col, row, color] — col+ = forward (nose), row+ = down in local space
-    // Nose block = weapon module (#ff4444), rear = engine module (#7fd9ff), rest = hull (tier color)
-    const blocks: [number, number, string][] = r > 14
-      ? [ // larger ships: wider wing arrangement
-          [ 1,  0, '#ff4444'],  // weapon module (nose)
-          [ 0, -1, this.tier.color], [ 0,  0, this.tier.color], [ 0,  1, this.tier.color],
-          [-1, -2, this.tier.color], [-1, -1, this.tier.color], [-1,  0, this.tier.color],
-          [-1,  1, this.tier.color], [-1,  2, this.tier.color],
-          [-2,  0, '#7fd9ff'],  // engine module (rear)
-        ]
-      : [ // small ships: compact cross
-          [ 1,  0, '#ff4444'],  // weapon module (nose)
-          [ 0, -1, this.tier.color], [ 0,  0, this.tier.color], [ 0,  1, this.tier.color],
-          [-1,  0, '#7fd9ff'],  // engine module (rear)
-        ];
+    const B = this._blockSize;
 
-    for (const [col, row, fill] of blocks) {
-      const x = col * B - B / 2;
-      const y = row * B - B / 2;
-      ctx.fillStyle   = fill;
+    for (const m of this.modules) {
+      if (!m.alive) continue;
+      const x = m.col * B - B / 2;
+      const y = m.row * B - B / 2;
+
+      ctx.fillStyle = m.baseColor;
       ctx.fillRect(x, y, B, B);
+
+      // Darken the module as HP drains (like asteroid blocks)
+      if (m.hp < m.maxHp) {
+        const damageRatio = 1 - m.hp / m.maxHp;
+        ctx.fillStyle = `rgba(0,0,0,${damageRatio * 0.7})`;
+        ctx.fillRect(x, y, B, B);
+      }
+
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
       ctx.lineWidth   = 0.5;
       ctx.strokeRect(x, y, B, B);
@@ -487,16 +663,18 @@ export class Enemy {
 
     ctx.restore();
 
-    // Health bar
-    const barW   = r * 2.5;
-    const barH   = 4;
-    const barX   = this.pos.x - barW / 2;
-    const barY   = this.pos.y - r - 10;
-    const hpRatio = this.hp / this.tier.maxHp;
+    // Module integrity bar (alive modules / total)
+    const aliveCount = this.modules.filter(m => m.alive).length;
+    const integrityRatio = aliveCount / this.modules.length;
+    const r    = this.tier.radius;
+    const barW = r * 2.5;
+    const barH = 4;
+    const barX = this.pos.x - barW / 2;
+    const barY = this.pos.y - r - 10;
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(barX, barY, barW, barH);
-    ctx.fillStyle = hpRatio > 0.5 ? '#2ecc71' : hpRatio > 0.25 ? '#e67e22' : '#e74c3c';
-    ctx.fillRect(barX, barY, barW * hpRatio, barH);
+    ctx.fillStyle = integrityRatio > 0.5 ? '#2ecc71' : integrityRatio > 0.25 ? '#e67e22' : '#e74c3c';
+    ctx.fillRect(barX, barY, barW * integrityRatio, barH);
 
     // Name label when attacking or retreating
     if (this.state === 'attack' || this.state === 'chase') {

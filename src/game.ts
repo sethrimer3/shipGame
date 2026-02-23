@@ -226,6 +226,7 @@ class Game {
     if (!this.input.isDown('escape')) this._pauseKeyHeld = false;
 
     if (!this.player.alive) {
+      this.camera.updateShake(dt); // let shake decay on the death screen
       if (this.input.isDown('r')) window.location.reload();
       return;
     }

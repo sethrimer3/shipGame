@@ -20,7 +20,7 @@ export class AsteroidTurret {
   private readonly _damage:   number;
 
   constructor(
-    private readonly _asteroid: import('./asteroid').Asteroid,
+    private readonly _asteroid: Asteroid,
     private readonly _block:    Block,
     distFromOrigin: number,
   ) {

@@ -65,12 +65,13 @@ const GEM_CLUSTERS_PER_CHUNK = 2;
 const GEM_CLUSTER_CHANCE     = 0.35; // probability per attempt
 
 // Mothership spawning
-const MOTHERSHIP_MIN_DIST    = 3000;  // world-unit distance before motherships appear
-const MOTHERSHIP_SPAWN_CHANCE = 0.22; // probability per chunk (in eligible area)
+const MOTHERSHIP_MIN_DIST      = 3000;  // world-unit distance before motherships appear
+const MOTHERSHIP_SPAWN_CHANCE  = 0.22; // probability per chunk (in eligible area)
 // Trap asteroid probability (per asteroid)
-const TRAP_ASTEROID_CHANCE   = 0.18;
+const TRAP_ASTEROID_CHANCE     = 0.18;
+const TRAP_ASTEROID_MIN_DIST   = 1000; // minimum world-unit distance for trap asteroids
 // Min turrets per asteroid (if chosen), max
-const TURRET_ASTEROID_CHANCE = 0.30; // chance an asteroid gets turrets
+const TURRET_ASTEROID_CHANCE   = 0.30; // chance an asteroid gets turrets
 
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
@@ -220,7 +221,7 @@ export class World {
       const ast  = new Asteroid({ x: ax, y: ay }, cols, rows, distFromOrigin, rng);
 
       // Mark some asteroids as traps (only outside safe zone)
-      if (distFromOrigin >= 1000 && rng() < TRAP_ASTEROID_CHANCE) {
+      if (distFromOrigin >= TRAP_ASTEROID_MIN_DIST && rng() < TRAP_ASTEROID_CHANCE) {
         ast.isTrap = true;
       }
 
@@ -345,6 +346,9 @@ export class World {
             if (asteroid.isTrap && !asteroid.trapTriggered) {
               asteroid.trapTriggered = true;
               const numDrones = 5 + Math.floor(Math.random() * 5);
+              // Drone tier scales with how far the asteroid is from the origin
+              const asteroidDist = len(asteroid.centre);
+              const droneTier: 0 | 1 | 2 = asteroidDist >= 12000 ? 2 : asteroidDist >= 5000 ? 1 : 0;
               for (let di = 0; di < numDrones; di++) {
                 const ang = (di / numDrones) * Math.PI * 2 + Math.random() * 0.4;
                 const r   = asteroid.radius + 25;
@@ -352,7 +356,7 @@ export class World {
                   x: asteroid.centre.x + Math.cos(ang) * r,
                   y: asteroid.centre.y + Math.sin(ang) * r,
                 };
-                this.drones.push(new Drone(dPos, 0));
+                this.drones.push(new Drone(dPos, droneTier));
               }
             }
 

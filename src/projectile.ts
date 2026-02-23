@@ -78,7 +78,7 @@ export class HomingRocket extends Projectile {
       const dx = t.x - this.pos.x;
       const dy = t.y - this.pos.y;
       const d  = Math.sqrt(dx * dx + dy * dy);
-      if (d > 1) {
+      if (d > 1) { // guard against near-zero distance to avoid atan2 instability
         const desired = Math.atan2(dy, dx);
         const current = Math.atan2(this.vel.y, this.vel.x);
         let diff = desired - current;

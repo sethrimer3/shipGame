@@ -52,7 +52,12 @@ export function tierForDist(d: number): EnemyTier {
 }
 
 // ── State machine ─────────────────────────────────────────────────────────────
-type EnemyState = 'patrol' | 'chase' | 'attack';
+type EnemyState = 'patrol' | 'chase' | 'attack' | 'retreat';
+
+const RETREAT_HP_THRESHOLD    = 0.25; // fraction of maxHp below which an enemy retreats
+const RETREAT_DISTANCE_MULT   = 2.0;  // multiples of sightRange before retreat ends
+const RETREAT_RECOVERY_CAP    = 0.5;  // max HP fraction an enemy recovers to after retreating
+const RETREAT_RECOVERY_AMOUNT = 0.2;  // fraction of maxHp restored on successful retreat
 
 export class Enemy {
   vel:   Vec2  = { x: 0, y: 0 };
@@ -95,6 +100,12 @@ export class Enemy {
     // ── State transitions ──────────────────────────────────────────
     this.stateTimer += dt;
 
+    // Retreat when critically wounded (< 25% HP)
+    if (this.hp < this.tier.maxHp * RETREAT_HP_THRESHOLD && this.state !== 'retreat') {
+      this.state      = 'retreat';
+      this.stateTimer = 0;
+    }
+
     if (this.state === 'patrol') {
       if (distToPlayer < this.tier.sightRange) {
         this.state      = 'chase';
@@ -117,6 +128,14 @@ export class Enemy {
         this.state      = 'chase';
         this.stateTimer = 0;
       }
+    } else if (this.state === 'retreat') {
+      // Partially recover and re-enter patrol once far enough away
+      if (distToPlayer > this.tier.sightRange * RETREAT_DISTANCE_MULT) {
+        this.hp    = Math.min(this.tier.maxHp * RETREAT_RECOVERY_CAP, this.hp + this.tier.maxHp * RETREAT_RECOVERY_AMOUNT);
+        this.state = 'patrol';
+        this.stateTimer = 0;
+        this.patrolTarget = this._randomPatrolPoint();
+      }
     }
 
     // ── Movement ───────────────────────────────────────────────────
@@ -127,6 +146,12 @@ export class Enemy {
       targetPos = this.patrolTarget;
     } else if (this.state === 'chase') {
       targetPos = player.pos;
+    } else if (this.state === 'retreat') {
+      // Move directly away from the player
+      const awayDir = sub(this.pos, player.pos);
+      const awayLen = len(awayDir);
+      const n = awayLen > 0.1 ? { x: awayDir.x / awayLen, y: awayDir.y / awayLen } : { x: 1, y: 0 };
+      targetPos = add(this.pos, scale(n, 200));
     } else {
       // attack: orbit at ~ATTACK_RANGE
       if (distToPlayer > ATTACK_RANGE) {
@@ -147,11 +172,12 @@ export class Enemy {
       this.vel.y += n.y * this.tier.speed * 4 * dt;
     }
 
-    // Speed cap
+    // Speed cap (retreat at 1.5× normal speed)
+    const speedCap = this.state === 'retreat' ? this.tier.speed * 1.5 : this.tier.speed;
     const spd = len(this.vel);
-    if (spd > this.tier.speed) {
+    if (spd > speedCap) {
       const n  = normalize(this.vel);
-      this.vel = scale(n, this.tier.speed);
+      this.vel = scale(n, speedCap);
     }
 
     // Drag
@@ -232,12 +258,17 @@ export class Enemy {
     ctx.fillStyle = hpRatio > 0.5 ? '#2ecc71' : hpRatio > 0.25 ? '#e67e22' : '#e74c3c';
     ctx.fillRect(barX, barY, barW * hpRatio, barH);
 
-    // Name label when attacking
+    // Name label when attacking or retreating
     if (this.state === 'attack' || this.state === 'chase') {
       ctx.fillStyle  = 'rgba(255,255,255,0.6)';
       ctx.font       = '9px Courier New';
       ctx.textAlign  = 'center';
       ctx.fillText(this.tier.name, this.pos.x, barY - 3);
+    } else if (this.state === 'retreat') {
+      ctx.fillStyle  = 'rgba(255,180,0,0.8)';
+      ctx.font       = '9px Courier New';
+      ctx.textAlign  = 'center';
+      ctx.fillText('RETREATING', this.pos.x, barY - 3);
     }
   }
 }

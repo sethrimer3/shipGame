@@ -68,12 +68,24 @@ const PICKUP_SUCTION_RADIUS = 200;  // world units where pickups accelerate towa
 const PICKUP_LIFETIME       = 20;   // seconds before despawn
 const PICKUP_HALF_SIZE      = 5;    // half-side of pickup draw rect (world units)
 
+const HEALTH_DROP_CHANCE        = 0.15; // probability of a health pack dropping on enemy kill
+const HEALTH_DROP_XP_MULTIPLIER = 0.3;  // heal amount = 10 + xpValue * this
+
 // ── Floating resource pickup ──────────────────────────────────────────────────
 interface ResourcePickup {
   pos:      Vec2;
   vel:      Vec2;
   material: Material;
   qty:      number;
+  lifetime: number;
+  maxLife:  number;
+}
+
+// ── Health pickup dropped by enemies ─────────────────────────────────────────
+interface HealthPickup {
+  pos:      Vec2;
+  vel:      Vec2;
+  amount:   number; // HP restored on collection
   lifetime: number;
   maxLife:  number;
 }
@@ -121,6 +133,9 @@ export class World {
 
   /** Floating resource pickups dropped by enemies and asteroid debris. */
   pickups: ResourcePickup[] = [];
+
+  /** Health pickups dropped by enemies. */
+  healthPickups: HealthPickup[] = [];
 
   /** Blocks placed by the player. */
   placedBlocks: PlacedBlock[] = [];
@@ -351,6 +366,18 @@ export class World {
                   maxLife:  PICKUP_LIFETIME,
                 });
               }
+              // ── Health pack drop (15% chance) ──────────────────────
+              if (Math.random() < HEALTH_DROP_CHANCE) {
+                const healAmount = 10 + Math.floor(enemy.tier.xpValue * HEALTH_DROP_XP_MULTIPLIER);
+                const ang = Math.random() * Math.PI * 2;
+                this.healthPickups.push({
+                  pos:      { x: enemy.pos.x, y: enemy.pos.y },
+                  vel:      { x: Math.cos(ang) * 60, y: Math.sin(ang) * 60 },
+                  amount:   healAmount,
+                  lifetime: PICKUP_LIFETIME,
+                  maxLife:  PICKUP_LIFETIME,
+                });
+              }
             }
           }
         }
@@ -394,6 +421,34 @@ export class World {
       }
     }
     this.pickups = this.pickups.filter(p => p.lifetime > 0);
+
+    // ── Health pickup update & collection ─────────────────────────
+    for (const h of this.healthPickups) {
+      h.lifetime -= dt;
+      h.pos.x += h.vel.x * dt;
+      h.pos.y += h.vel.y * dt;
+      h.vel.x *= 0.98;
+      h.vel.y *= 0.98;
+      // Suction toward player
+      const dh = dist(h.pos, player.pos);
+      if (dh < PICKUP_SUCTION_RADIUS && dh > 0.1) {
+        const dx = player.pos.x - h.pos.x;
+        const dy = player.pos.y - h.pos.y;
+        const strength = (1 - dh / PICKUP_SUCTION_RADIUS) * 500;
+        h.vel.x += (dx / dh) * strength * dt;
+        h.vel.y += (dy / dh) * strength * dt;
+      }
+      if (dh < PICKUP_COLLECT_RADIUS) {
+        player.hp = Math.min(player.maxHp, player.hp + h.amount);
+        floatingTexts.push(makeFloatingText(
+          { x: player.pos.x, y: player.pos.y - player.radius - 14 },
+          `+${h.amount} HP`,
+          '#44ff88',
+        ));
+        h.lifetime = 0;
+      }
+    }
+    this.healthPickups = this.healthPickups.filter(h => h.lifetime > 0);
 
     // ── Placed-block projectile collisions ───────────────────────
     for (const block of this.placedBlocks) {
@@ -448,6 +503,27 @@ export class World {
       ctx.font = '9px Courier New';
       ctx.textAlign = 'center';
       ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 9);
+      ctx.restore();
+    }
+
+    // ── Health pickups ─────────────────────────────────────────────
+    for (const h of this.healthPickups) {
+      const fade  = Math.min(1, h.lifetime / 3);
+      const pulse = 0.7 + Math.sin(now / 250) * 0.3;
+      ctx.save();
+      ctx.globalAlpha = fade * pulse;
+      ctx.shadowColor = '#ff4455';
+      ctx.shadowBlur  = 10;
+      ctx.fillStyle   = '#ff4455';
+      // Draw a red cross / plus symbol
+      ctx.fillRect(h.pos.x - 6, h.pos.y - 2, 12, 4); // horizontal bar
+      ctx.fillRect(h.pos.x - 2, h.pos.y - 6, 4, 12); // vertical bar
+      ctx.shadowBlur  = 0;
+      ctx.globalAlpha = fade * 0.85;
+      ctx.fillStyle   = '#ffaaaa';
+      ctx.font        = '9px Courier New';
+      ctx.textAlign   = 'center';
+      ctx.fillText(`+${h.amount} HP`, h.pos.x, h.pos.y - 11);
       ctx.restore();
     }
 

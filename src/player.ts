@@ -15,6 +15,8 @@ const BOOST_MULTIPLIER = 2;
 const OVERHEAT_MAX = 100;
 const OVERHEAT_DRAIN_RATE = 25;
 const OVERHEAT_RECHARGE_RATE = 18;
+const SHIELD_REGEN_DELAY = 3.0; // seconds after damage before shield starts recharging
+const DAMAGE_FLASH_DURATION = 0.15; // seconds the ship flashes red after taking a hit
 
 export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant';
 
@@ -62,6 +64,8 @@ export class Player {
   private overheatMeter = OVERHEAT_MAX;
   private levelHpBonus = 0;
   private levelShieldBonus = 0;
+  private shieldRegenDelay = 0;   // countdown before shield starts recharging after damage
+  private damageFlashTimer = 0;   // countdown for the red hit-flash visual
   private modules: ShipModules = {
     hull: 12,
     engine: 2,
@@ -249,8 +253,15 @@ export class Player {
     this.pos.y += this.vel.y * dt;
 
     // ── Shield regen ──────────────────────────────────────────────
-    const regenRate = this.hasShieldGen ? this.shieldRegen * 3 : this.shieldRegen;
-    this.shield = Math.min(this.maxShield, this.shield + regenRate * dt);
+    if (this.shieldRegenDelay > 0) {
+      this.shieldRegenDelay -= dt;
+    } else {
+      const regenRate = this.hasShieldGen ? this.shieldRegen * 3 : this.shieldRegen;
+      this.shield = Math.min(this.maxShield, this.shield + regenRate * dt);
+    }
+
+    // ── Damage flash countdown ────────────────────────────────────
+    if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
 
     // ── Firing ────────────────────────────────────────────────────
     this.fireCooldown -= dt;
@@ -307,6 +318,8 @@ export class Player {
   /** Take damage (shield absorbs first). */
   damage(amount: number): void {
     this.recentDamage += amount;
+    this.shieldRegenDelay = SHIELD_REGEN_DELAY;
+    this.damageFlashTimer = DAMAGE_FLASH_DURATION;
     let remaining = amount;
     const shieldAbsorb = Math.min(this.shield, remaining);
     this.shield   -= shieldAbsorb;
@@ -332,11 +345,14 @@ export class Player {
       ctx.shadowBlur  = 14;
     }
 
+    // Red flash overlay when recently damaged
+    const flashing = this.damageFlashTimer > 0;
+
     for (const block of blocks) {
       const { col, row, color } = block;
       const x = col * B - B / 2;
       const y = row * B - B / 2;
-      ctx.fillStyle = color;
+      ctx.fillStyle = flashing ? '#ff4444' : color;
       ctx.fillRect(x, y, B, B);
       ctx.strokeStyle = '#0a4d22';
       ctx.lineWidth   = 0.5;

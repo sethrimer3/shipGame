@@ -9,8 +9,11 @@ A 2D sandbox ship game built with HTML and TypeScript.
 - **8-slot toolbar** – navigate with the scroll wheel or press 1–8
 - **Open world** – procedurally generated asteroid fields that grow denser and rarer the further from the origin
 - **Block-based asteroids** – composed of 6 material types (Rock → Iron → Gold → Crystal → Titanium → Darkite) each with unique hardness and rarity
-- **Enemy ships** – 4 tiers that scale with distance from origin (Scout, Fighter, Cruiser, Capital Ship); patrol until the player is spotted, then chase and attack
+- **Enemy ships** – 4 tiers that scale with distance from origin (Scout, Fighter, Cruiser, Capital Ship); patrol until the player is spotted, then chase and attack; retreat when critically wounded
 - **Resource collection** – shoot/mine asteroids to collect materials
+- **Health pickups** – enemies have a chance to drop glowing red health packs on death; fly toward the player and restore HP on contact
+- **Shield recharge delay** – shield only begins recharging 3 seconds after the last hit, rewarding cautious play
+- **Hit flash** – ship briefly flashes red when taking damage for clear visual feedback
 - **Crafting system** – open with **C** to combine materials into weapons and upgrades
 - **HUD** – health bar, shield bar, XP bar, level, world coordinates
 - **XP & Levelling** – earn XP by destroying enemies; level up to gain +10 max HP and +5 max shield per level

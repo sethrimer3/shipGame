@@ -1,6 +1,6 @@
 import { Vec2, sub, scale, normalize, len, dist } from './types';
 import { Player }            from './player';
-import { Projectile, HomingRocket } from './projectile';
+import { Projectile, HomingRocket, LaserBeam } from './projectile';
 import { Particle, makeExplosion }  from './particle';
 import { Drone }             from './enemy';
 
@@ -255,8 +255,8 @@ export class Mothership {
         const dP  = len(toP);
         if (dP > 0) {
           const dir = { x: toP.x / dP, y: toP.y / dP };
-          projectiles.push(new Projectile(
-            wp, dir, 520, this.tier.laserDamage, 4, '#ff2222', 'enemy', 3,
+          projectiles.push(new LaserBeam(
+            wp, dir, this.tier.laserDamage, '#ff2222', 'enemy',
           ));
         }
       } else if (m.type === 'weapon_rocket' && this.tier.rocketRate > 0) {

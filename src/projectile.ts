@@ -48,6 +48,41 @@ export class Projectile {
   }
 }
 
+/**
+ * An instantaneous laser beam.  Travels very fast and renders as a glowing
+ * line drawn from the spawn point to the current tip position.
+ */
+export class LaserBeam extends Projectile {
+  private readonly _origin: Vec2;
+
+  constructor(
+    pos: Vec2,
+    dir: Vec2,
+    damage: number,
+    color: string,
+    owner: ProjectileOwner,
+  ) {
+    super(pos, dir, 8000, damage, 3, color, owner, 0.3);
+    this._origin = { ...pos };
+  }
+
+  override draw(ctx: CanvasRenderingContext2D): void {
+    const alpha = Math.max(0, 1 - this.lifetime / this.maxLife);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth   = 2;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur  = 10;
+    ctx.beginPath();
+    ctx.moveTo(this._origin.x, this._origin.y);
+    ctx.lineTo(this.pos.x, this.pos.y);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
 /** A homing missile that steers toward a moving target each frame. */
 export class HomingRocket extends Projectile {
   private readonly _target: () => Vec2 | null;

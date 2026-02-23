@@ -2,7 +2,7 @@ import {
   Vec2, add, sub, scale, normalize, len, dist, fromAngle,
 } from './types';
 import { Player }     from './player';
-import { Projectile } from './projectile';
+import { Projectile, LaserBeam } from './projectile';
 import { Particle, makeExplosion } from './particle';
 
 // ── Drone enemy (spawned by motherships and trap asteroids) ──────────────────
@@ -74,8 +74,8 @@ export class Drone {
     if (d < 520 && this.fireCooldown <= 0) {
       this.fireCooldown = 1 / this._fireRate;
       const dir = d > 0 ? { x: dx / d, y: dy / d } : { x: 1, y: 0 };
-      projectiles.push(new Projectile(
-        this.pos, dir, 420, this._damage, 3, '#ff6060', 'enemy', 2.5,
+      projectiles.push(new LaserBeam(
+        this.pos, dir, this._damage, '#ff4444', 'enemy',
       ));
     }
   }
@@ -97,12 +97,15 @@ export class Drone {
     ctx.translate(this.pos.x, this.pos.y);
     ctx.rotate(this.angle);
     const B = 5;
-    // Tiny ship silhouette: nose + body + wings
-    const blocks: [number, number][] = [
-      [1, 0], [0, -1], [0, 0], [0, 1],
+    // Tiny ship silhouette: nose (weapon) + body (hull) + engine at rear
+    // col+ = forward; col 1=nose/weapon, 0=hull body, -1=engine
+    const blockDefs: [number, number, string][] = [
+      [1,  0, '#ff4444'],  // weapon module (nose) – laser
+      [0, -1, this._color], [0, 0, this._color], [0, 1, this._color], // hull
+      [-1, 0, '#7fd9ff'],  // engine module (rear)
     ];
-    for (const [col, row] of blocks) {
-      ctx.fillStyle   = this._color;
+    for (const [col, row, fill] of blockDefs) {
+      ctx.fillStyle   = fill;
       ctx.fillRect(col * B - B / 2, row * B - B / 2, B, B);
       ctx.strokeStyle = 'rgba(255,255,255,0.18)';
       ctx.lineWidth   = 0.5;
@@ -270,12 +273,12 @@ const TIERS: EnemyTier[] = [
   {
     minDist: 5000,  name: 'Cruiser',       radius: 20, maxHp: 160, speed: 90,
     damage: 28, fireRate: 2.0, projectileSpeed: 500, sightRange: 640,
-    color: '#8e44ad', xpValue: 60, dropChance: 0.7,
+    color: '#f1c40f', xpValue: 60, dropChance: 0.7,
   },
   {
     minDist: 10000, name: 'Capital Ship',  radius: 30, maxHp: 400, speed: 60,
     damage: 50, fireRate: 2.5, projectileSpeed: 550, sightRange: 800,
-    color: '#2c3e50', xpValue: 150, dropChance: 0.9,
+    color: '#3498db', xpValue: 150, dropChance: 0.9,
   },
 ];
 
@@ -456,24 +459,26 @@ export class Enemy {
     const r = this.tier.radius;
     // Block size scales with tier radius; each ship is a small grid of squares
     const B = Math.max(5, Math.round(r * 0.55));
-    // [col, row] — col+ = forward (nose), row+ = down in local space
-    const blocks: [number, number][] = r > 14
+    // [col, row, color] — col+ = forward (nose), row+ = down in local space
+    // Nose block = weapon module (#ff4444), rear = engine module (#7fd9ff), rest = hull (tier color)
+    const blocks: [number, number, string][] = r > 14
       ? [ // larger ships: wider wing arrangement
-          [ 1,  0],
-          [ 0, -1], [ 0,  0], [ 0,  1],
-          [-1, -2], [-1, -1], [-1,  0], [-1,  1], [-1,  2],
-          [-2,  0],
+          [ 1,  0, '#ff4444'],  // weapon module (nose)
+          [ 0, -1, this.tier.color], [ 0,  0, this.tier.color], [ 0,  1, this.tier.color],
+          [-1, -2, this.tier.color], [-1, -1, this.tier.color], [-1,  0, this.tier.color],
+          [-1,  1, this.tier.color], [-1,  2, this.tier.color],
+          [-2,  0, '#7fd9ff'],  // engine module (rear)
         ]
       : [ // small ships: compact cross
-          [ 1,  0],
-          [ 0, -1], [ 0,  0], [ 0,  1],
-          [-1,  0],
+          [ 1,  0, '#ff4444'],  // weapon module (nose)
+          [ 0, -1, this.tier.color], [ 0,  0, this.tier.color], [ 0,  1, this.tier.color],
+          [-1,  0, '#7fd9ff'],  // engine module (rear)
         ];
 
-    for (const [col, row] of blocks) {
+    for (const [col, row, fill] of blocks) {
       const x = col * B - B / 2;
       const y = row * B - B / 2;
-      ctx.fillStyle   = this.tier.color;
+      ctx.fillStyle   = fill;
       ctx.fillRect(x, y, B, B);
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
       ctx.lineWidth   = 0.5;

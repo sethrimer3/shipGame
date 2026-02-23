@@ -128,6 +128,7 @@ class Game {
 
   private _pendingShipModules: ShipModules | null = null;
   private _draggingModuleType: ShipModuleType | null = null;
+  private _draggingFromCell: { row: number; col: number } | null = null;
 
   /** Zone transition banner state */
   private _lastZoneName    = '';
@@ -452,9 +453,24 @@ class Game {
             cell.classList.add('core');
           }
 
+          cell.addEventListener('dragstart', (event) => {
+            const mtype = cell.dataset.moduleType as ShipModuleType | undefined;
+            if (!mtype) { event.preventDefault(); return; }
+            this._draggingModuleType = mtype;
+            this._draggingFromCell = { row, col };
+            event.dataTransfer?.setData('text/plain', mtype);
+          });
+          cell.addEventListener('dragend', () => {
+            this._draggingModuleType = null;
+            this._draggingFromCell = null;
+            this._clearEditorGridHighlights();
+          });
+
           cell.addEventListener('dragover', (event) => {
-            event.preventDefault();
             if (cell.dataset.locked === 'true') return;
+            // When dragging from a grid cell, only allow swapping with another filled cell
+            if (this._draggingFromCell && !cell.dataset.moduleType) return;
+            event.preventDefault();
             cell.classList.add('drop-target');
           });
           cell.addEventListener('dragleave', () => {
@@ -464,10 +480,13 @@ class Game {
             event.preventDefault();
             cell.classList.remove('drop-target');
             if (cell.dataset.locked === 'true') return;
-
             const moduleType = (event.dataTransfer?.getData('text/plain') || this._draggingModuleType) as ShipModuleType | '';
             if (!moduleType) return;
-            this._setPendingModuleAtCell(row, col, moduleType);
+            if (this._draggingFromCell) {
+              this._swapPendingModuleCells(this._draggingFromCell.row, this._draggingFromCell.col, row, col);
+            } else {
+              this._setPendingModuleAtCell(row, col, moduleType);
+            }
           });
 
           gridRoot.appendChild(cell);
@@ -541,6 +560,19 @@ class Game {
     this._refreshShipEditorPanel();
   }
 
+  private _swapPendingModuleCells(fromRow: number, fromCol: number, toRow: number, toCol: number): void {
+    if (!this._pendingShipModules) return;
+    const slots = this._gridSlotsForModules(this._pendingShipModules);
+    const fromSlot = slots.find(s => s.row === fromRow && s.col === fromCol);
+    const toSlot   = slots.find(s => s.row === toRow   && s.col === toCol);
+    if (!fromSlot || !toSlot) return;
+    const tmp      = fromSlot.type;
+    fromSlot.type  = toSlot.type;
+    toSlot.type    = tmp;
+    this._pendingShipModules = this._modulesFromGridSlots(slots);
+    this._refreshShipEditorPanel();
+  }
+
   private _renderPendingShipGrid(): void {
     if (!this._pendingShipModules) return;
     const slotByPos = new Map<string, ShipModuleType>();
@@ -557,11 +589,15 @@ class Game {
       htmlCell.classList.remove('filled', 'hull', 'engine', 'shield', 'coolant', 'weapon');
       htmlCell.textContent = '';
       if (!moduleType) {
+        htmlCell.draggable = false;
+        delete htmlCell.dataset.moduleType;
         if (htmlCell.dataset.locked === 'true') htmlCell.textContent = 'CORE';
         continue;
       }
       htmlCell.classList.add('filled', moduleType);
       htmlCell.textContent = moduleType === 'hull' ? 'H' : moduleType[0].toUpperCase();
+      htmlCell.draggable = true;
+      htmlCell.dataset.moduleType = moduleType;
     }
   }
 

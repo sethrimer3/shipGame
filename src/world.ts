@@ -274,7 +274,10 @@ export class World {
       const groupSize = 2 + Math.floor(rng() * 3); // 2–4 per group
       const gx = baseX + 100 + rng() * (CHUNK_SIZE - 200);
       const gy = baseY + 100 + rng() * (CHUNK_SIZE - 200);
-      const iTier: 0 | 1 | 2 = distFromOrigin >= 10000 ? 2 : distFromOrigin >= 4000 ? 1 : 0;
+      let iTier: 0 | 1 | 2;
+      if (distFromOrigin >= 10000)      iTier = 2;
+      else if (distFromOrigin >= 4000)  iTier = 1;
+      else                              iTier = 0;
       for (let i = 0; i < groupSize; i++) {
         const ang    = (i / groupSize) * Math.PI * 2;
         const spread = 60 + rng() * 60;

@@ -152,8 +152,8 @@ export class Interceptor {
     this._xpValue   = [8, 16, 28][tier];
   }
 
-  get xpValue():   number { return this._xpValue;   }
-  get ramDamage(): number { return this._ramDamage;  }
+  get xpValue():   number { return this._xpValue;  }
+  get ramDamage(): number { return this._ramDamage; }
 
   update(dt: number, player: Player, particles: Particle[]): void {
     const dx = player.pos.x - this.pos.x;

@@ -1,6 +1,6 @@
 import { Vec2, len, dist, Material, MATERIAL_PROPS, pickMaterial, pickGem } from './types';
 import { Asteroid, AsteroidTurret }  from './asteroid';
-import { Enemy, Drone }     from './enemy';
+import { Enemy, Drone, Interceptor } from './enemy';
 import { Particle, FloatingText, makeFloatingText }  from './particle';
 import { Projectile } from './projectile';
 import { Player }    from './player';
@@ -72,6 +72,9 @@ const TRAP_ASTEROID_CHANCE     = 0.18;
 const TRAP_ASTEROID_MIN_DIST   = 1000; // minimum world-unit distance for trap asteroids
 // Min turrets per asteroid (if chosen), max
 const TURRET_ASTEROID_CHANCE   = 0.30; // chance an asteroid gets turrets
+// Interceptor spawning
+const INTERCEPTOR_MIN_DIST     = 1500; // minimum world distance for interceptors
+const INTERCEPTOR_SPAWN_CHANCE = 0.40; // probability per chunk attempt
 
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
@@ -131,13 +134,14 @@ function chunkSeed(cx: number, cy: number): number {
 interface Star { x: number; y: number; r: number; brightness: number }
 
 interface Chunk {
-  cx:          number;
-  cy:          number;
-  asteroids:   Asteroid[];
-  enemies:     Enemy[];
-  stars:       Star[];
-  motherships: Mothership[];
-  turrets:     AsteroidTurret[];
+  cx:           number;
+  cy:           number;
+  asteroids:    Asteroid[];
+  enemies:      Enemy[];
+  stars:        Star[];
+  motherships:  Mothership[];
+  turrets:      AsteroidTurret[];
+  interceptors: Interceptor[];
 }
 
 export class World {
@@ -193,11 +197,12 @@ export class World {
     const chunkCentre: Vec2 = { x: baseX + CHUNK_SIZE / 2, y: baseY + CHUNK_SIZE / 2 };
     const distFromOrigin    = len({ x: chunkCentre.x, y: chunkCentre.y });
 
-    const asteroids:   Asteroid[]       = [];
-    const enemies:     Enemy[]          = [];
-    const stars:       Star[]           = [];
-    const motherships: Mothership[]     = [];
-    const turrets:     AsteroidTurret[] = [];
+    const asteroids:    Asteroid[]       = [];
+    const enemies:      Enemy[]          = [];
+    const stars:        Star[]           = [];
+    const motherships:  Mothership[]     = [];
+    const turrets:      AsteroidTurret[] = [];
+    const interceptors: Interceptor[]    = [];
 
     // ── Stars ──────────────────────────────────────────────────────
     for (let i = 0; i < STAR_DENSITY; i++) {
@@ -210,7 +215,7 @@ export class World {
     }
 
     // Skip chunks very close to spawn (safe zone)
-    if (distFromOrigin < 200) return { cx, cy, asteroids, enemies, stars, motherships, turrets };
+    if (distFromOrigin < 200) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors };
 
     // ── Asteroids ──────────────────────────────────────────────────
     for (let i = 0; i < ASTEROIDS_PER_CHUNK; i++) {
@@ -264,7 +269,23 @@ export class World {
       motherships.push(new Mothership({ x: mx, y: my }, distFromOrigin, rng));
     }
 
-    return { cx, cy, asteroids, enemies, stars, motherships, turrets };
+    // ── Interceptors (spawn in small groups beyond safe zone) ──────
+    if (distFromOrigin >= INTERCEPTOR_MIN_DIST && rng() < INTERCEPTOR_SPAWN_CHANCE) {
+      const groupSize = 2 + Math.floor(rng() * 3); // 2–4 per group
+      const gx = baseX + 100 + rng() * (CHUNK_SIZE - 200);
+      const gy = baseY + 100 + rng() * (CHUNK_SIZE - 200);
+      const iTier: 0 | 1 | 2 = distFromOrigin >= 10000 ? 2 : distFromOrigin >= 4000 ? 1 : 0;
+      for (let i = 0; i < groupSize; i++) {
+        const ang    = (i / groupSize) * Math.PI * 2;
+        const spread = 60 + rng() * 60;
+        interceptors.push(new Interceptor(
+          { x: gx + Math.cos(ang) * spread, y: gy + Math.sin(ang) * spread },
+          iTier,
+        ));
+      }
+    }
+
+    return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors };
   }
 
   /** Helper: place 1–2 turrets on perimeter blocks of an asteroid. */
@@ -551,6 +572,63 @@ export class World {
         }
       }
       chunk.turrets = chunk.turrets.filter(t => t.alive);
+
+      // ── Interceptor AI update ─────────────────────────────────────
+      for (const ic of chunk.interceptors) {
+        if (!ic.alive) continue;
+        ic.update(dt, player, particles);
+      }
+
+      // ── Interceptor ram collision (contact with player) ───────────
+      for (const ic of chunk.interceptors) {
+        if (!ic.alive) continue;
+        if (dist(ic.pos, player.pos) < ic.radius + player.radius) {
+          player.damage(ic.ramDamage);
+          ic.alive = false;
+          particles.push(...Array.from({ length: 14 }, () => {
+            const ang = Math.random() * Math.PI * 2;
+            const spd = 60 + Math.random() * 100;
+            return {
+              pos:      { x: ic.pos.x, y: ic.pos.y },
+              vel:      { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
+              color:    '#ff4444',
+              radius:   2 + Math.random() * 2,
+              lifetime: 0.4 + Math.random() * 0.5,
+              maxLife:  0.9,
+              alpha:    1,
+            };
+          }));
+          floatingTexts.push(makeFloatingText(
+            { x: player.pos.x + (Math.random() - 0.5) * 24, y: player.pos.y - player.radius - 10 },
+            `-${ic.ramDamage} RAM`,
+            '#ff4444',
+          ));
+          this.kills++;
+          player.gainXP(ic.xpValue);
+        }
+      }
+
+      // ── Interceptor-projectile collisions (player hits interceptor)
+      for (const ic of chunk.interceptors) {
+        if (!ic.alive) continue;
+        for (const proj of projectiles) {
+          if (!proj.alive || proj.owner !== 'player') continue;
+          if (dist(proj.pos, ic.pos) < ic.radius + proj.radius) {
+            proj.alive = false;
+            const killed = ic.damage(proj.damage, particles, Math.random);
+            floatingTexts.push(makeFloatingText(
+              { x: ic.pos.x, y: ic.pos.y - ic.radius },
+              `-${proj.damage}`,
+              '#ffcc44',
+            ));
+            if (killed) {
+              this.kills++;
+              player.gainXP(ic.xpValue);
+            }
+          }
+        }
+      }
+      chunk.interceptors = chunk.interceptors.filter(ic => ic.alive);
     }
 
     // ── Pickup update & collection ────────────────────────────────
@@ -687,6 +765,13 @@ export class World {
       if (drone.alive) drone.draw(ctx);
     }
 
+    // ── Interceptors ───────────────────────────────────────────────
+    for (const chunk of chunks) {
+      for (const ic of chunk.interceptors) {
+        if (ic.alive) ic.draw(ctx);
+      }
+    }
+
     // ── Resource pickups ───────────────────────────────────────────
     const now = Date.now();
     for (const p of this.pickups) {
@@ -755,6 +840,7 @@ export class World {
     for (const chunk of chunks) {
       for (const e  of chunk.enemies)     if (e.alive)    enemies.push({ ...e.pos });
       for (const ms of chunk.motherships) if (ms.alive)   enemies.push({ ...ms.pos });
+      for (const ic of chunk.interceptors) if (ic.alive)  enemies.push({ ...ic.pos });
       for (const a  of chunk.asteroids)   if (a.alive)    asteroids.push({ ...a.centre });
     }
     for (const d of this.drones) if (d.alive) enemies.push({ ...d.pos });

@@ -568,6 +568,7 @@ body {
 .editor-grid-cell.filled.engine { background: rgba(127, 217, 255, 0.35); }
 .editor-grid-cell.filled.shield { background: rgba(159, 140, 255, 0.35); }
 .editor-grid-cell.filled.coolant { background: rgba(127, 255, 210, 0.35); }
+.editor-grid-cell.filled.weapon { background: rgba(255, 68, 68, 0.35); }
 
 .editor-section-title {
   font-size: 12px;

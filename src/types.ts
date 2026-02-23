@@ -240,6 +240,24 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     outputId:    'placer_laser',
     outputQty:   1,
   },
+  {
+    id:          'spread_cannon',
+    name:        'Spread Cannon',
+    description: 'Fires 3 shots in a wide arc. Devastating up close.',
+    icon:        '💥',
+    inputs:      [{ material: Material.Iron, quantity: 5 }, { material: Material.Rock, quantity: 3 }],
+    outputId:    'spread_cannon',
+    outputQty:   1,
+  },
+  {
+    id:          'missile_launcher',
+    name:        'Missile Launcher',
+    description: 'Fires homing rockets that steer toward your mouse cursor.',
+    icon:        '🚀',
+    inputs:      [{ material: Material.Gold, quantity: 4 }, { material: Material.Crystal, quantity: 2 }],
+    outputId:    'missile_launcher',
+    outputQty:   1,
+  },
 ];
 
 export interface ToolbarItemDef {
@@ -254,6 +272,10 @@ export interface ToolbarItemDef {
   projectileSpeed: number;
   projectileColor: string;
   projectileRadius: number;
+  /** If > 1, fires this many projectiles in a spread arc. */
+  spreadShots?: number;
+  /** If true, fired projectile homes toward the mouse cursor. */
+  isHoming?: boolean;
 }
 
 export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
@@ -301,5 +323,15 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
     id: 'placer_laser', name: 'Placer Laser', icon: '🧱', color: '#2ecc71',
     type: 'placer', damage: 0, fireRate: 3, projectileSpeed: 0,
     projectileColor: '#2ecc71', projectileRadius: 0,
+  },
+  spread_cannon: {
+    id: 'spread_cannon', name: 'Spread Cannon', icon: '💥', color: '#e67e22',
+    type: 'weapon', damage: 18, fireRate: 1.3, projectileSpeed: 480,
+    projectileColor: '#ff9944', projectileRadius: 5, spreadShots: 3,
+  },
+  missile_launcher: {
+    id: 'missile_launcher', name: 'Missile', icon: '🚀', color: '#ff8800',
+    type: 'weapon', damage: 42, fireRate: 0.65, projectileSpeed: 300,
+    projectileColor: '#ff8800', projectileRadius: 5, isHoming: true,
   },
 };

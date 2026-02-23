@@ -1,6 +1,6 @@
 import { Vec2, len, dist, Material, MATERIAL_PROPS, pickMaterial, pickGem } from './types';
 import { Asteroid, AsteroidTurret }  from './asteroid';
-import { Enemy, Drone, Interceptor } from './enemy';
+import { Enemy, Drone, Interceptor, EnemyModuleFragment } from './enemy';
 import { Particle, FloatingText, makeFloatingText }  from './particle';
 import { Projectile } from './projectile';
 import { Player }    from './player';
@@ -85,6 +85,19 @@ const PICKUP_HALF_SIZE      = 5;    // half-side of pickup draw rect (world unit
 const HEALTH_DROP_CHANCE        = 0.15; // probability of a health pack dropping on enemy kill
 const HEALTH_DROP_XP_MULTIPLIER = 0.3;  // heal amount = 10 + xpValue * this
 
+// ── Floating module fragment (detached from a destroyed enemy ship) ──────────
+const FLOATING_MODULE_START_HP    = 40;  // initial HP of a floating module
+const FLOATING_MODULE_DAMAGE_RATE = 5;   // HP/s passive damage when unattached
+
+interface FloatingModule {
+  pos:    Vec2;
+  vel:    Vec2;
+  color:  string;
+  hp:     number;
+  maxHp:  number;
+  size:   number;  // block size in pixels
+}
+
 // ── Floating resource pickup ──────────────────────────────────────────────────
 interface ResourcePickup {
   pos:      Vec2;
@@ -160,6 +173,9 @@ export class World {
   /** Active drones spawned by motherships and trap asteroids. */
   drones: Drone[] = [];
 
+  /** Detached enemy ship modules drifting in space. */
+  floatingModules: FloatingModule[] = [];
+
   /** Accumulated enemy kills – could be used for score */
   kills = 0;
 
@@ -187,6 +203,18 @@ export class World {
     };
     this.placedBlocks.push(block);
     return block;
+  }
+
+  /** Spawn a FloatingModule from an EnemyModuleFragment. */
+  private _spawnFloatingModule(frag: EnemyModuleFragment): void {
+    this.floatingModules.push({
+      pos:   { x: frag.pos.x, y: frag.pos.y },
+      vel:   { x: frag.vel.x, y: frag.vel.y },
+      color: frag.color,
+      hp:    FLOATING_MODULE_START_HP,
+      maxHp: FLOATING_MODULE_START_HP,
+      size:  frag.size,
+    });
   }
 
   private _generateChunk(cx: number, cy: number): Chunk {
@@ -445,13 +473,17 @@ export class World {
           if (!proj.alive || proj.owner !== 'player') continue;
           if (dist(proj.pos, enemy.pos) < enemy.radius + proj.radius) {
             proj.alive = false;
-            const killed = enemy.damage(proj.damage, particles, Math.random);
+            const result = enemy.damageAt(proj.pos, proj.damage, particles, Math.random);
+            // Spawn floating modules for any detached fragments
+            for (const frag of result.fragments) {
+              this._spawnFloatingModule(frag);
+            }
             floatingTexts.push(makeFloatingText(
               { x: enemy.pos.x, y: enemy.pos.y - enemy.radius },
               `-${proj.damage}`,
               '#ffcc44',
             ));
-            if (killed) {
+            if (result.killed) {
               this.kills++;
               player.gainXP(enemy.tier.xpValue);
               floatingTexts.push(makeFloatingText(
@@ -730,6 +762,19 @@ export class World {
       }
     }
     this.drones = this.drones.filter(d => d.alive);
+
+    // ── Floating module update (passive damage + drift) ──────────
+    for (const fm of this.floatingModules) {
+      fm.pos.x += fm.vel.x * dt;
+      fm.pos.y += fm.vel.y * dt;
+      // Gentle drag
+      const fmDrag = Math.pow(0.97, dt * 60);
+      fm.vel.x *= fmDrag;
+      fm.vel.y *= fmDrag;
+      // Passive damage – unattached modules degrade over time
+      fm.hp -= FLOATING_MODULE_DAMAGE_RATE * dt;
+    }
+    this.floatingModules = this.floatingModules.filter(fm => fm.hp > 0);
   }
 
   draw(ctx: CanvasRenderingContext2D, camPos: Vec2): void {
@@ -766,6 +811,23 @@ export class World {
     // ── Drones ─────────────────────────────────────────────────────
     for (const drone of this.drones) {
       if (drone.alive) drone.draw(ctx);
+    }
+
+    // ── Floating modules (detached enemy ship pieces) ──────────────
+    for (const fm of this.floatingModules) {
+      const hpRatio = fm.hp / fm.maxHp;
+      const half = fm.size / 2;
+      ctx.fillStyle = fm.color;
+      ctx.fillRect(fm.pos.x - half, fm.pos.y - half, fm.size, fm.size);
+      // Darken progressively as HP drains
+      const darkOverlay = 1 - hpRatio;
+      if (darkOverlay > 0) {
+        ctx.fillStyle = `rgba(0,0,0,${darkOverlay * 0.85})`;
+        ctx.fillRect(fm.pos.x - half, fm.pos.y - half, fm.size, fm.size);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth   = 0.5;
+      ctx.strokeRect(fm.pos.x - half, fm.pos.y - half, fm.size, fm.size);
     }
 
     // ── Interceptors ───────────────────────────────────────────────

@@ -4,7 +4,7 @@ import {
 } from './types';
 import { InputManager }  from './input';
 import { Camera }        from './camera';
-import { Projectile }    from './projectile';
+import { Projectile, HomingRocket } from './projectile';
 import { Particle, makeExplosion } from './particle';
 
 const THRUST_FORCE  = 700;  // px/s²
@@ -18,13 +18,14 @@ const OVERHEAT_RECHARGE_RATE = 18;
 const SHIELD_REGEN_DELAY = 3.0; // seconds after damage before shield starts recharging
 const DAMAGE_FLASH_DURATION = 0.15; // seconds the ship flashes red after taking a hit
 
-export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant';
+export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant' | 'weapon';
 
 export interface ShipModules {
-  hull: number;
-  engine: number;
-  shield: number;
+  hull:    number;
+  engine:  number;
+  shield:  number;
   coolant: number;
+  weapon:  number;
 }
 
 export class Player {
@@ -71,6 +72,7 @@ export class Player {
     engine: 2,
     shield: 2,
     coolant: 1,
+    weapon: 0,
   };
 
   constructor(
@@ -104,6 +106,16 @@ export class Player {
 
   get overheatRechargeMultiplier(): number {
     return 1 + this.modules.coolant * 0.3;
+  }
+
+  /** Weapon damage multiplier from weapon modules (+8% per module). */
+  get weaponDamageMultiplier(): number {
+    return 1 + this.modules.weapon * 0.08;
+  }
+
+  /** Weapon fire rate multiplier from weapon modules (+6% per module). */
+  get weaponFireRateMultiplier(): number {
+    return 1 + this.modules.weapon * 0.06;
   }
 
   getMuzzleWorldPos(): Vec2 {
@@ -140,10 +152,11 @@ export class Player {
 
   setModules(next: ShipModules): void {
     this.modules = {
-      hull: Math.max(1, Math.floor(next.hull)),
-      engine: Math.max(0, Math.floor(next.engine)),
-      shield: Math.max(0, Math.floor(next.shield)),
+      hull:    Math.max(1, Math.floor(next.hull)),
+      engine:  Math.max(0, Math.floor(next.engine)),
+      shield:  Math.max(0, Math.floor(next.shield)),
       coolant: Math.max(0, Math.floor(next.coolant)),
+      weapon:  Math.max(0, Math.floor(next.weapon)),
     };
     this._recalculateShipStats();
   }
@@ -269,11 +282,32 @@ export class Player {
     const boostedFireRate = boostActive ? BOOST_MULTIPLIER : 1;
     if (weapon && (weapon.type === 'weapon' || weapon.type === 'tool') &&
         this.input.mouseDown && this.fireCooldown <= 0) {
-      this.fireCooldown = 1 / (weapon.fireRate * boostedFireRate);
-      projectiles.push(new Projectile(
-        this.pos, forward, weapon.projectileSpeed,
-        weapon.damage, weapon.projectileRadius, weapon.projectileColor, 'player',
-      ));
+      const adjustedRate   = weapon.fireRate * boostedFireRate * this.weaponFireRateMultiplier;
+      this.fireCooldown    = 1 / adjustedRate;
+      const adjustedDamage = Math.round(weapon.damage * this.weaponDamageMultiplier);
+
+      if (weapon.isHoming) {
+        // Homing rocket – tracks the player's mouse cursor in real time
+        const cam = this.camera;
+        const inp = this.input;
+        projectiles.push(new HomingRocket(
+          this.pos, forward, weapon.projectileSpeed, adjustedDamage,
+          weapon.projectileRadius, weapon.projectileColor, 'player', 7,
+          () => cam.screenToWorld(inp.mousePos),
+          2.5,
+        ));
+      } else {
+        const spreadCount = weapon.spreadShots ?? 1;
+        const SPREAD_ARC  = Math.PI / 9; // 20° total arc
+        for (let si = 0; si < spreadCount; si++) {
+          const offset = spreadCount > 1 ? (si / (spreadCount - 1) - 0.5) * SPREAD_ARC : 0;
+          const dir = fromAngle(this.angle + offset);
+          projectiles.push(new Projectile(
+            this.pos, dir, weapon.projectileSpeed, adjustedDamage,
+            weapon.projectileRadius, weapon.projectileColor, 'player',
+          ));
+        }
+      }
     }
 
     const tryingToFire = !!weapon && this.input.mouseDown;
@@ -310,6 +344,29 @@ export class Player {
           lifetime: 0.2 + Math.random() * 0.35,
           maxLife: 0.55,
           alpha: 1,
+        });
+      }
+    }
+
+    // ── Engine exhaust trail ──────────────────────────────────────
+    if (accelerating) {
+      const rear    = { x: this.pos.x - forward.x * 13, y: this.pos.y - forward.y * 13 };
+      const rate    = 25;
+      const count   = Math.floor(rate * dt) + (Math.random() < (rate * dt % 1) ? 1 : 0);
+      for (let i = 0; i < count; i++) {
+        const jitter = (Math.random() - 0.5) * 5;
+        const speed  = 40 + Math.random() * 50;
+        const col    = boostActive
+          ? `rgba(180,110,255,0.85)`
+          : `rgba(80,190,255,0.75)`;
+        particles.push({
+          pos:      { x: rear.x + rightVec.x * jitter, y: rear.y + rightVec.y * jitter },
+          vel:      { x: -forward.x * speed + this.vel.x * 0.1, y: -forward.y * speed + this.vel.y * 0.1 },
+          color:    col,
+          radius:   1 + Math.random() * 2,
+          lifetime: 0.18 + Math.random() * 0.14,
+          maxLife:  0.32,
+          alpha:    1,
         });
       }
     }
@@ -401,9 +458,10 @@ export class Player {
       }
     };
 
-    addSpecial(this.modules.engine, [[-3, -1], [-3, 1], [-4, 0], [-4, -1], [-4, 1]], '#7fd9ff');
-    addSpecial(this.modules.shield, [[0, -3], [0, 3], [1, -3], [1, 3], [-1, -3], [-1, 3]], '#9f8cff');
+    addSpecial(this.modules.engine,  [[-3, -1], [-3, 1], [-4, 0], [-4, -1], [-4, 1]], '#7fd9ff');
+    addSpecial(this.modules.shield,  [[0, -3], [0, 3], [1, -3], [1, 3], [-1, -3], [-1, 3]], '#9f8cff');
     addSpecial(this.modules.coolant, [[-2, -2], [-2, 2], [-3, -2], [-3, 2]], '#7fffd2');
+    addSpecial(this.modules.weapon,  [[2, -3], [2, 3], [3, -1], [3, 1]], '#ff4444');
     return blocks;
   }
 }

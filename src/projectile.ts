@@ -47,3 +47,70 @@ export class Projectile {
     ctx.shadowBlur  = 0;
   }
 }
+
+/** A homing missile that steers toward a moving target each frame. */
+export class HomingRocket extends Projectile {
+  private readonly _target: () => Vec2 | null;
+  private readonly _turnRate: number;
+
+  constructor(
+    pos: Vec2,
+    dir: Vec2,
+    speed: number,
+    damage: number,
+    radius: number,
+    color: string,
+    owner: ProjectileOwner,
+    maxLife: number,
+    /** Getter returning the current target world position (or null to fly straight). */
+    target: () => Vec2 | null,
+    /** Max turn speed in radians per second. */
+    turnRate = 2.2,
+  ) {
+    super(pos, dir, speed, damage, radius, color, owner, maxLife);
+    this._target   = target;
+    this._turnRate = turnRate;
+  }
+
+  override update(dt: number): void {
+    const t = this._target();
+    if (t) {
+      const dx = t.x - this.pos.x;
+      const dy = t.y - this.pos.y;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d > 1) { // guard against near-zero distance to avoid atan2 instability
+        const desired = Math.atan2(dy, dx);
+        const current = Math.atan2(this.vel.y, this.vel.x);
+        let diff = desired - current;
+        while (diff >  Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        const turn     = Math.sign(diff) * Math.min(Math.abs(diff), this._turnRate * dt);
+        const newAngle = current + turn;
+        const spd      = Math.sqrt(this.vel.x * this.vel.x + this.vel.y * this.vel.y);
+        this.vel.x     = Math.cos(newAngle) * spd;
+        this.vel.y     = Math.sin(newAngle) * spd;
+      }
+    }
+    super.update(dt);
+  }
+
+  override draw(ctx: CanvasRenderingContext2D): void {
+    const ang = Math.atan2(this.vel.y, this.vel.x);
+    ctx.save();
+    ctx.translate(this.pos.x, this.pos.y);
+    ctx.rotate(ang);
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur  = 14;
+    // Body
+    ctx.fillStyle   = this.color;
+    ctx.fillRect(-8, -3, 16, 6);
+    // Nose cone
+    ctx.fillStyle   = '#ffffff';
+    ctx.fillRect(7, -2, 4, 4);
+    // Exhaust glow
+    ctx.fillStyle   = '#ff8800';
+    ctx.fillRect(-12, -2, 5, 4);
+    ctx.shadowBlur  = 0;
+    ctx.restore();
+  }
+}

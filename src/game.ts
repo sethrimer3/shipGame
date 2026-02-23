@@ -40,10 +40,11 @@ interface ModuleEditorConfig {
 }
 
 const MODULE_EDITOR_CONFIG: ModuleEditorConfig[] = [
-  { type: 'hull', name: 'Hull', desc: 'Main structure. Raises maximum HP.', color: '#2ecc71' },
-  { type: 'engine', name: 'Engine', desc: 'Boosts acceleration and top speed.', color: '#7fd9ff' },
-  { type: 'shield', name: 'Shield', desc: 'Increases max shield and regen.', color: '#9f8cff' },
-  { type: 'coolant', name: 'Coolant', desc: 'Reduces overheat drain and speeds recovery.', color: '#7fffd2' },
+  { type: 'hull',    name: 'Hull',    desc: 'Main structure. Raises maximum HP.',                         color: '#2ecc71' },
+  { type: 'engine',  name: 'Engine',  desc: 'Boosts acceleration and top speed.',                         color: '#7fd9ff' },
+  { type: 'shield',  name: 'Shield',  desc: 'Increases max shield and regen.',                             color: '#9f8cff' },
+  { type: 'coolant', name: 'Coolant', desc: 'Reduces overheat drain and speeds recovery.',                 color: '#7fffd2' },
+  { type: 'weapon',  name: 'Weapon',  desc: 'Boosts weapon damage (+8%) and fire rate (+6%) per module.', color: '#ff4444' },
 ];
 
 const EDITOR_GRID_SIZE = 9;
@@ -75,11 +76,16 @@ const COOLANT_EDITOR_SLOTS: EditorSlot[] = [
   [-2, -2], [-2, 2], [-3, -2], [-3, 2],
 ].map(([col, row]) => toEditorSlot(col, row));
 
+const WEAPON_EDITOR_SLOTS: EditorSlot[] = [
+  [2, -3], [2, 3], [3, -1], [3, 1],
+].map(([col, row]) => toEditorSlot(col, row));
+
 const EDITOR_SLOT_ORDER: EditorSlot[] = [
   ...HULL_EDITOR_SLOTS,
   ...ENGINE_EDITOR_SLOTS,
   ...SHIELD_EDITOR_SLOTS,
   ...COOLANT_EDITOR_SLOTS,
+  ...WEAPON_EDITOR_SLOTS,
 ];
 
 
@@ -122,6 +128,12 @@ class Game {
 
   private _pendingShipModules: ShipModules | null = null;
   private _draggingModuleType: ShipModuleType | null = null;
+
+  /** Zone transition banner state */
+  private _lastZoneName    = '';
+  private _zoneBannerTimer = 0;
+  private _zoneBannerText  = '';
+  private _zoneBannerColor = '#fff';
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -317,6 +329,27 @@ class Game {
     const distFromOrigin = len(this.player.pos);
     if (distFromOrigin > this._maxDistFromOrigin) this._maxDistFromOrigin = distFromOrigin;
 
+    // ── Zone transition detection ───────────────────────────────────
+    const ZONES = [
+      { dist: 0,     name: 'Spawn Zone',  color: '#2ecc71' },
+      { dist: 800,   name: 'Near Space',  color: '#3498db' },
+      { dist: 2000,  name: 'Mid Space',   color: '#9b59b6' },
+      { dist: 5000,  name: 'Deep Space',  color: '#e67e22' },
+      { dist: 10000, name: 'Void Fringe', color: '#e74c3c' },
+      { dist: 16000, name: 'Dark Void',   color: '#6c3483' },
+    ];
+    let currentZone = ZONES[0];
+    for (let i = ZONES.length - 1; i >= 0; i--) {
+      if (distFromOrigin >= ZONES[i].dist) { currentZone = ZONES[i]; break; }
+    }
+    if (this._lastZoneName !== '' && currentZone.name !== this._lastZoneName) {
+      this._zoneBannerTimer = 3.5;
+      this._zoneBannerText  = currentZone.name.toUpperCase();
+      this._zoneBannerColor = currentZone.color;
+    }
+    this._lastZoneName = currentZone.name;
+    if (this._zoneBannerTimer > 0) this._zoneBannerTimer -= dt;
+
     // ── World / enemies / collisions ────────────────────────────────
     this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position);
 
@@ -469,12 +502,14 @@ class Game {
     this._renderPendingShipGrid();
 
     const base = this.player.moduleCounts;
-    const hp = this.player.maxHp + (counts.hull - base.hull) * 18;
-    const shield = this.player.maxShield + (counts.shield - base.shield) * 20;
-    const regen = this.player.shieldRegen + (counts.shield - base.shield) * 1.8;
-    const accel = Math.max(0.1, 1 + counts.engine * 0.14);
-    const speed = Math.max(0.1, 1 + counts.engine * 0.12);
+    const hp      = this.player.maxHp + (counts.hull - base.hull) * 18;
+    const shield  = this.player.maxShield + (counts.shield - base.shield) * 20;
+    const regen   = this.player.shieldRegen + (counts.shield - base.shield) * 1.8;
+    const accel   = Math.max(0.1, 1 + counts.engine * 0.14);
+    const speed   = Math.max(0.1, 1 + counts.engine * 0.12);
     const coolant = Math.max(0.1, 1 + counts.coolant * 0.3);
+    const wDmg    = 1 + counts.weapon * 0.08;
+    const wRate   = 1 + counts.weapon * 0.06;
 
     const stats = document.getElementById('ship-editor-stats');
     if (stats) {
@@ -485,6 +520,8 @@ class Game {
         <div class="editor-stat">Accel x${accel.toFixed(2)}</div>
         <div class="editor-stat">Top Speed x${speed.toFixed(2)}</div>
         <div class="editor-stat">Coolant x${coolant.toFixed(2)}</div>
+        <div class="editor-stat">Dmg x${wDmg.toFixed(2)}</div>
+        <div class="editor-stat">Fire Rate x${wRate.toFixed(2)}</div>
       `;
     }
   }
@@ -517,7 +554,7 @@ class Game {
       const row = Number(htmlCell.dataset.row);
       const col = Number(htmlCell.dataset.col);
       const moduleType = slotByPos.get(`${row},${col}`);
-      htmlCell.classList.remove('filled', 'hull', 'engine', 'shield', 'coolant');
+      htmlCell.classList.remove('filled', 'hull', 'engine', 'shield', 'coolant', 'weapon');
       htmlCell.textContent = '';
       if (!moduleType) {
         if (htmlCell.dataset.locked === 'true') htmlCell.textContent = 'CORE';
@@ -530,7 +567,7 @@ class Game {
 
   private _gridSlotsForModules(modules: ShipModules): Array<{ row: number; col: number; type: ShipModuleType }> {
     const types: ShipModuleType[] = [];
-    for (const type of ['hull', 'engine', 'shield', 'coolant'] as ShipModuleType[]) {
+    for (const type of ['hull', 'engine', 'shield', 'coolant', 'weapon'] as ShipModuleType[]) {
       for (let i = 0; i < modules[type]; i++) types.push(type);
     }
 
@@ -543,7 +580,7 @@ class Game {
   }
 
   private _modulesFromGridSlots(slots: Array<{ row: number; col: number; type: ShipModuleType }>): ShipModules {
-    const out: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0 };
+    const out: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0 };
     for (const slot of slots) out[slot.type] += 1;
     if (out.hull < 1) out.hull = 1;
     return out;
@@ -692,6 +729,40 @@ class Game {
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font      = '16px Courier New';
       ctx.fillText('Press ESC to resume', canvas.width / 2, canvas.height / 2 + 30);
+    }
+
+    // ── Zone transition banner ─────────────────────────────────────
+    if (this._zoneBannerTimer > 0 && this.player.alive && !this._paused) {
+      // Fade in first 0.5 s, hold, fade out last 0.5 s
+      let alpha: number;
+      if (this._zoneBannerTimer > 3.0)       alpha = (3.5 - this._zoneBannerTimer) / 0.5;
+      else if (this._zoneBannerTimer < 0.5)  alpha = this._zoneBannerTimer / 0.5;
+      else                                   alpha = 1.0;
+
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      // Subtle backdrop
+      const grad = ctx.createLinearGradient(0, cy - 70, 0, cy + 40);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.3, 'rgba(0,0,0,0.55)');
+      grad.addColorStop(0.7, 'rgba(0,0,0,0.55)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, cy - 70, canvas.width, 110);
+      // Sub-label
+      ctx.font      = '16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.fillText('— ENTERING NEW ZONE —', cx, cy - 30);
+      // Zone name (shadow + colored)
+      ctx.font      = 'bold 42px Courier New';
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillText(this._zoneBannerText, cx + 2, cy + 18);
+      ctx.fillStyle = this._zoneBannerColor;
+      ctx.fillText(this._zoneBannerText, cx, cy + 16);
+      ctx.restore();
     }
 
     // ── Game-over overlay ──────────────────────────────────────────

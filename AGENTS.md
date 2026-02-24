@@ -81,6 +81,8 @@ Maintain:
 1. Update docs if architecture changes.
 2. Confirm gameplay still behaves the same.
 3. Validate no FPS regressions.
+4. Ensure the build number is displayed in the bottom-left of the screen.
+5. Increment the build number by 1 with every PR request/change.
 
 ---
 

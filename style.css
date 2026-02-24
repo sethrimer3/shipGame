@@ -495,8 +495,10 @@ body {
   top: 50%;
   left: 50%;
   --panel-scale: 1;
-  transform: translate(-50%, -50%) scale(var(--panel-scale));
+  --editor-shift-x: 0px;
+  transform: translate(calc(-50% + var(--editor-shift-x)), -50%) scale(var(--panel-scale));
   transform-origin: center center;
+  transition: transform 0.28s ease;
   background: rgba(8, 18, 26, 0.96);
   border: 1px solid rgba(120, 220, 255, 0.45);
   border-radius: 8px;
@@ -533,6 +535,90 @@ body {
   font-size: 10px;
   color: rgba(255, 255, 255, 0.45);
   margin-bottom: 10px;
+}
+
+
+#ship-stats-toggle {
+  margin-bottom: 8px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(126, 207, 255, 0.45);
+  background: rgba(126, 207, 255, 0.14);
+  color: #9eddff;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+#ship-editor-stats-overlay {
+  background: rgba(7, 20, 28, 0.98);
+  border: 1px solid rgba(120, 220, 255, 0.38);
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+#open-crafting-from-editor {
+  margin-top: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(126, 207, 255, 0.45);
+  background: rgba(126, 207, 255, 0.14);
+  color: #9eddff;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+#ship-editor-save-confirm {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border-radius: 8px;
+}
+
+.save-confirm-title {
+  font-size: 20px;
+  color: #d9f2ff;
+}
+
+.save-confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+
+#ship-editor-discard-btn,
+#ship-editor-save-btn {
+  padding: 8px 14px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  pointer-events: all;
+  cursor: pointer;
+}
+
+#ship-editor-discard-btn {
+  border: 1px solid rgba(255, 80, 80, 0.7);
+  background: rgba(255, 80, 80, 0.2);
+  color: #ffaeae;
+}
+
+#ship-editor-save-btn {
+  border: 1px solid rgba(90, 255, 140, 0.7);
+  background: rgba(90, 255, 140, 0.18);
+  color: #b8ffcd;
+}
+
+body.ship-editor-layout-open #ship-editor-panel {
+  --editor-shift-x: 180px;
 }
 
 #ship-editor-stats {
@@ -670,7 +756,7 @@ body {
 
 body.ship-editor-layout-open #crafting-panel {
   top: 50%;
-  left: calc(50% + 590px);
+  left: calc(50% - 310px);
   transform: translateY(-50%) scale(var(--panel-scale));
   transform-origin: center center;
   width: 320px;

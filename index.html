@@ -47,14 +47,25 @@
           <div class="editor-palette-window">
             <h3 class="editor-section-title">Module Palette</h3>
             <div id="ship-editor-palette"></div>
+            <button id="open-crafting-from-editor">Crafting</button>
           </div>
           <div class="editor-grid-window">
-            <div id="ship-editor-stats"></div>
+            <button id="ship-stats-toggle">Ship Stats ▼</button>
+            <div id="ship-editor-stats-overlay" class="hidden">
+              <div id="ship-editor-stats"></div>
+            </div>
             <div id="ship-editor-grid"></div>
             <div class="editor-actions">
               <button id="confirm-ship-editor">Confirm Layout</button>
               <button id="close-ship-editor">Close [C]</button>
             </div>
+          </div>
+        </div>
+        <div id="ship-editor-save-confirm" class="hidden">
+          <div class="save-confirm-title">Save Changes to Ship?</div>
+          <div class="save-confirm-actions">
+            <button id="ship-editor-discard-btn">✖ No [X]</button>
+            <button id="ship-editor-save-btn">✔ Yes [C]</button>
           </div>
         </div>
       </div>

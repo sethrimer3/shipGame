@@ -95,7 +95,7 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 ];
 
 
-const BUILD_NUMBER = 10;
+const BUILD_NUMBER = 11;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -136,8 +136,12 @@ class Game {
 
   /** Explicit per-cell layout being edited.  Each entry is in editor grid coords (row, col 0-10). */
   private _pendingModuleSlots: Array<{ row: number; col: number; type: ShipModuleType }> | null = null;
+  private _savedModuleSlots: Array<{ row: number; col: number; type: ShipModuleType }> = [];
   private _draggingModuleType: ShipModuleType | null = null;
   private _draggingFromCell: { row: number; col: number } | null = null;
+  private _isCraftingPanelOpenFromEditor = false;
+  private _isSaveConfirmOpen = false;
+  private _isShipStatsOpen = false;
 
   /** Zone transition banner state */
   private _lastZoneName    = '';
@@ -297,9 +301,17 @@ class Game {
     if (!this.input.isDown('tab')) this._settingsKeyHeld = false;
 
     if (this.input.isDown('c') && !this._shipEditorKeyHeld) {
-      this._shipEditorOpen = !this._shipEditorOpen;
       this._shipEditorKeyHeld = true;
-      this._setShipEditorVisible(this._shipEditorOpen);
+      if (this._shipEditorOpen) {
+        if (this._isSaveConfirmOpen) this._saveShipEditorAndClose();
+        else this._requestCloseShipEditor();
+      } else {
+        this._shipEditorOpen = true;
+        this._setShipEditorVisible(true);
+      }
+    }
+    if (this.input.isDown('x') && this._isSaveConfirmOpen) {
+      this._discardShipEditorAndClose();
     }
     if (!this.input.isDown('c')) this._shipEditorKeyHeld = false;
 
@@ -435,38 +447,137 @@ class Game {
   }
 
 
+  private _getCurrentShipSlots(): Array<{ row: number; col: number; type: ShipModuleType }> {
+    return this._slotsFromPlayer();
+  }
+
+  private _slotsEqual(
+    a: Array<{ row: number; col: number; type: ShipModuleType }>,
+    b: Array<{ row: number; col: number; type: ShipModuleType }>,
+  ): boolean {
+    if (a.length !== b.length) return false;
+    const sortedA = [...a].sort((left, right) => (left.row - right.row) || (left.col - right.col) || left.type.localeCompare(right.type));
+    const sortedB = [...b].sort((left, right) => (left.row - right.row) || (left.col - right.col) || left.type.localeCompare(right.type));
+    for (let i = 0; i < sortedA.length; i++) {
+      const left = sortedA[i];
+      const right = sortedB[i];
+      if (left.row !== right.row || left.col !== right.col || left.type !== right.type) return false;
+    }
+    return true;
+  }
+
+  private _isShipEditorDirty(): boolean {
+    if (!this._pendingModuleSlots) return false;
+    return !this._slotsEqual(this._pendingModuleSlots, this._savedModuleSlots);
+  }
+
+  private _applyPendingShipLayout(): void {
+    if (!this._pendingModuleSlots) return;
+    const shipSlots = this._pendingModuleSlots.map(s => ({
+      type: s.type,
+      col: EDITOR_CENTER - s.row,
+      row: s.col - EDITOR_CENTER,
+    }));
+    this.player.setModuleLayout(shipSlots);
+    this._savedModuleSlots = this._getCurrentShipSlots();
+    this._pendingModuleSlots = [...this._savedModuleSlots];
+  }
+
+  private _requestCloseShipEditor(): void {
+    if (this._isShipEditorDirty()) {
+      this._setSaveConfirmVisible(true);
+      return;
+    }
+    this._shipEditorOpen = false;
+    this._setShipEditorVisible(false);
+  }
+
+  private _saveShipEditorAndClose(): void {
+    this._applyPendingShipLayout();
+    this.hud.showMessage('Ship layout saved');
+    this._shipEditorOpen = false;
+    this._setShipEditorVisible(false);
+  }
+
+  private _discardShipEditorAndClose(): void {
+    this._pendingModuleSlots = [...this._savedModuleSlots];
+    this._shipEditorOpen = false;
+    this._setShipEditorVisible(false);
+  }
+
+  private _setSaveConfirmVisible(visible: boolean): void {
+    this._isSaveConfirmOpen = visible;
+    const confirm = document.getElementById('ship-editor-save-confirm');
+    if (!confirm) return;
+    if (visible) confirm.classList.remove('hidden');
+    else confirm.classList.add('hidden');
+  }
+
+  private _setShipStatsVisible(visible: boolean): void {
+    this._isShipStatsOpen = visible;
+    const overlay = document.getElementById('ship-editor-stats-overlay');
+    const toggle = document.getElementById('ship-stats-toggle');
+    if (overlay) {
+      if (visible) overlay.classList.remove('hidden');
+      else overlay.classList.add('hidden');
+    }
+    if (toggle) {
+      toggle.textContent = visible ? 'Ship Stats ▲' : 'Ship Stats ▼';
+    }
+    this._updateUiPanelScaling();
+  }
+
+  private _setCraftingPanelVisibleFromEditor(visible: boolean): void {
+    this._isCraftingPanelOpenFromEditor = visible;
+    if (visible) {
+      this.crafting.show();
+      document.body.classList.add('ship-editor-layout-open');
+    } else {
+      this.crafting.hide();
+      document.body.classList.remove('ship-editor-layout-open');
+    }
+    this._updateUiPanelScaling();
+  }
+
+
   private _initShipEditor(): void {
     const closeCraftingBtn = document.getElementById('close-crafting');
     if (closeCraftingBtn) {
-      closeCraftingBtn.addEventListener('click', () => {
-        this._shipEditorOpen = false;
-        this._setShipEditorVisible(false);
-      });
+      closeCraftingBtn.addEventListener('click', () => this._setCraftingPanelVisibleFromEditor(false));
     }
 
     const closeBtn = document.getElementById('close-ship-editor');
     if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        this._shipEditorOpen = false;
-        this._setShipEditorVisible(false);
-      });
+      closeBtn.addEventListener('click', () => this._requestCloseShipEditor());
     }
 
     const confirmBtn = document.getElementById('confirm-ship-editor');
     if (confirmBtn) {
       confirmBtn.addEventListener('click', () => {
-        if (!this._pendingModuleSlots) return;
-        // Convert editor positions to ship-local positions and apply
-        const shipSlots = this._pendingModuleSlots.map(s => ({
-          type: s.type,
-          col:  EDITOR_CENTER - s.row,
-          row:  s.col - EDITOR_CENTER,
-        }));
-        this.player.setModuleLayout(shipSlots);
-        this._pendingModuleSlots = this._slotsFromPlayer();
+        this._applyPendingShipLayout();
         this._refreshShipEditorPanel();
         this.hud.showMessage('Ship layout saved');
       });
+    }
+
+    const openCraftingBtn = document.getElementById('open-crafting-from-editor');
+    if (openCraftingBtn) {
+      openCraftingBtn.addEventListener('click', () => this._setCraftingPanelVisibleFromEditor(!this._isCraftingPanelOpenFromEditor));
+    }
+
+    const statsToggleBtn = document.getElementById('ship-stats-toggle');
+    if (statsToggleBtn) {
+      statsToggleBtn.addEventListener('click', () => this._setShipStatsVisible(!this._isShipStatsOpen));
+    }
+
+    const saveBtn = document.getElementById('ship-editor-save-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => this._saveShipEditorAndClose());
+    }
+
+    const discardBtn = document.getElementById('ship-editor-discard-btn');
+    if (discardBtn) {
+      discardBtn.addEventListener('click', () => this._discardShipEditorAndClose());
     }
 
     const paletteRoot = document.getElementById('ship-editor-palette');
@@ -562,13 +673,16 @@ class Game {
       else panel.classList.add('hidden');
     }
     if (visible) {
-      this._pendingModuleSlots = this._slotsFromPlayer();
+      this._savedModuleSlots = this._getCurrentShipSlots();
+      this._pendingModuleSlots = [...this._savedModuleSlots];
       this._refreshShipEditorPanel();
-      this.crafting.show();
-      document.body.classList.add('ship-editor-layout-open');
+      this._setShipStatsVisible(false);
+      this._setSaveConfirmVisible(false);
+      this._setCraftingPanelVisibleFromEditor(false);
     } else {
-      this.crafting.hide();
-      document.body.classList.remove('ship-editor-layout-open');
+      this._setSaveConfirmVisible(false);
+      this._setShipStatsVisible(false);
+      this._setCraftingPanelVisibleFromEditor(false);
     }
     this._updateUiPanelScaling();
   }

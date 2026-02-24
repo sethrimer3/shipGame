@@ -534,7 +534,7 @@ body {
 
 #ship-editor-grid {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(11, minmax(0, 1fr));
   gap: 4px;
   margin-bottom: 10px;
 }
@@ -569,6 +569,7 @@ body {
 .editor-grid-cell.filled.shield { background: rgba(159, 140, 255, 0.35); }
 .editor-grid-cell.filled.coolant { background: rgba(127, 255, 210, 0.35); }
 .editor-grid-cell.filled.weapon { background: rgba(255, 68, 68, 0.35); }
+.editor-grid-cell.filled.miningLaser { background: rgba(126, 214, 243, 0.35); }
 
 .editor-grid-cell.filled { cursor: grab; }
 .editor-grid-cell.filled:active { cursor: grabbing; }

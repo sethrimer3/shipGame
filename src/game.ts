@@ -40,14 +40,15 @@ interface ModuleEditorConfig {
 }
 
 const MODULE_EDITOR_CONFIG: ModuleEditorConfig[] = [
-  { type: 'hull',    name: 'Hull',    desc: 'Main structure. Raises maximum HP.',                         color: '#2ecc71' },
-  { type: 'engine',  name: 'Engine',  desc: 'Boosts acceleration and top speed.',                         color: '#7fd9ff' },
-  { type: 'shield',  name: 'Shield',  desc: 'Increases max shield and regen.',                             color: '#9f8cff' },
-  { type: 'coolant', name: 'Coolant', desc: 'Reduces overheat drain and speeds recovery.',                 color: '#7fffd2' },
-  { type: 'weapon',  name: 'Weapon',  desc: 'Boosts weapon damage (+8%) and fire rate (+6%) per module.', color: '#ff4444' },
+  { type: 'hull',        name: 'Hull',         desc: 'Main structure. Raises maximum HP.',                         color: '#2ecc71' },
+  { type: 'engine',      name: 'Engine',       desc: 'Boosts acceleration and top speed.',                         color: '#7fd9ff' },
+  { type: 'shield',      name: 'Shield',       desc: 'Increases max shield and regen.',                             color: '#9f8cff' },
+  { type: 'coolant',     name: 'Coolant',      desc: 'Reduces overheat drain and speeds recovery.',                 color: '#7fffd2' },
+  { type: 'weapon',      name: 'Weapon',       desc: 'Boosts weapon damage (+8%) and fire rate (+6%) per module.', color: '#ff4444' },
+  { type: 'miningLaser', name: 'Mining Laser', desc: 'Adds a front-facing mining laser beam (+1 beam per module).', color: '#7ed6f3' },
 ];
 
-const EDITOR_GRID_SIZE = 9;
+const EDITOR_GRID_SIZE = 11;
 const EDITOR_CENTER = Math.floor(EDITOR_GRID_SIZE / 2);
 
 type EditorSlot = { row: number; col: number };
@@ -80,14 +81,21 @@ const WEAPON_EDITOR_SLOTS: EditorSlot[] = [
   [2, -3], [2, 3], [3, -1], [3, 1],
 ].map(([col, row]) => toEditorSlot(col, row));
 
+const MINING_LASER_EDITOR_SLOTS: EditorSlot[] = [
+  [4, 0], [4, -1], [4, 1], [5, 0],
+].map(([col, row]) => toEditorSlot(col, row));
+
 const EDITOR_SLOT_ORDER: EditorSlot[] = [
   ...HULL_EDITOR_SLOTS,
   ...ENGINE_EDITOR_SLOTS,
   ...SHIELD_EDITOR_SLOTS,
   ...COOLANT_EDITOR_SLOTS,
   ...WEAPON_EDITOR_SLOTS,
+  ...MINING_LASER_EDITOR_SLOTS,
 ];
 
+
+const BUILD_NUMBER = 1;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -542,6 +550,7 @@ class Game {
         <div class="editor-stat">Coolant x${coolant.toFixed(2)}</div>
         <div class="editor-stat">Dmg x${wDmg.toFixed(2)}</div>
         <div class="editor-stat">Fire Rate x${wRate.toFixed(2)}</div>
+        <div class="editor-stat">Mining Lasers ${counts.miningLaser}</div>
       `;
     }
   }
@@ -587,7 +596,7 @@ class Game {
       const row = Number(htmlCell.dataset.row);
       const col = Number(htmlCell.dataset.col);
       const moduleType = slotByPos.get(`${row},${col}`);
-      htmlCell.classList.remove('filled', 'hull', 'engine', 'shield', 'coolant', 'weapon');
+      htmlCell.classList.remove('filled', 'hull', 'engine', 'shield', 'coolant', 'weapon', 'miningLaser');
       htmlCell.textContent = '';
       if (!moduleType) {
         htmlCell.draggable = false;
@@ -596,7 +605,10 @@ class Game {
         continue;
       }
       htmlCell.classList.add('filled', moduleType);
-      htmlCell.textContent = moduleType === 'hull' ? 'H' : moduleType[0].toUpperCase();
+      const MODULE_LABELS: Record<ShipModuleType, string> = {
+        hull: 'H', engine: 'E', shield: 'S', coolant: 'C', weapon: 'W', miningLaser: 'ML',
+      };
+      htmlCell.textContent = MODULE_LABELS[moduleType] ?? moduleType[0].toUpperCase();
       htmlCell.draggable = true;
       htmlCell.dataset.moduleType = moduleType;
     }
@@ -604,7 +616,7 @@ class Game {
 
   private _gridSlotsForModules(modules: ShipModules): Array<{ row: number; col: number; type: ShipModuleType }> {
     const types: ShipModuleType[] = [];
-    for (const type of ['hull', 'engine', 'shield', 'coolant', 'weapon'] as ShipModuleType[]) {
+    for (const type of ['hull', 'engine', 'shield', 'coolant', 'weapon', 'miningLaser'] as ShipModuleType[]) {
       for (let i = 0; i < modules[type]; i++) types.push(type);
     }
 
@@ -617,7 +629,7 @@ class Game {
   }
 
   private _modulesFromGridSlots(slots: Array<{ row: number; col: number; type: ShipModuleType }>): ShipModules {
-    const out: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0 };
+    const out: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0, miningLaser: 0 };
     for (const slot of slots) out[slot.type] += 1;
     if (out.hull < 1) out.hull = 1;
     return out;
@@ -754,6 +766,14 @@ class Game {
       ctx.fillText(`SPD ${spd}`, canvas.width - 170, canvas.height - 14);
       ctx.restore();
     }
+
+    // ── Build number (bottom-left) ─────────────────────────────────
+    ctx.save();
+    ctx.font      = '10px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillText(`Build ${BUILD_NUMBER}`, 8, canvas.height - 8);
+    ctx.restore();
 
     // ── Pause overlay ──────────────────────────────────────────────
     if (this._paused && this.player.alive) {

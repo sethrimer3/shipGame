@@ -74,8 +74,14 @@ export class Drone {
     if (d < 520 && this.fireCooldown <= 0) {
       this.fireCooldown = 1 / this._fireRate;
       const dir = d > 0 ? { x: dx / d, y: dy / d } : { x: 1, y: 0 };
+      // Fire from the weapon module (nose block, col=1, row=0, B=5)
+      const B = 5;
+      const muzzle = {
+        x: this.pos.x + B * Math.cos(this.angle),
+        y: this.pos.y + B * Math.sin(this.angle),
+      };
       projectiles.push(new LaserBeam(
-        this.pos, dir, this._damage, '#ff4444', 'enemy',
+        muzzle, dir, this._damage, '#ff4444', 'enemy',
       ));
     }
   }
@@ -559,8 +565,11 @@ export class Enemy {
     if (this.state === 'attack' && this.fireCooldown <= 0) {
       this.fireCooldown = 1 / this.tier.fireRate;
       const dir = normalize(sub(player.pos, this.pos));
+      // Fire from the weapon module world position (col=1, row=0)
+      const weaponModule = this.modules.find(m => m.col === 1 && m.row === 0 && m.alive);
+      const firePos = weaponModule ? this._moduleWorldPos(weaponModule) : this.pos;
       projectiles.push(new Projectile(
-        this.pos, dir, this.tier.projectileSpeed, this.tier.damage,
+        firePos, dir, this.tier.projectileSpeed, this.tier.damage,
         4, '#ff6060', 'enemy', 3,
       ));
     }

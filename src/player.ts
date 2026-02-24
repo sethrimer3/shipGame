@@ -30,6 +30,15 @@ export interface ShipModules {
   miningLaser: number;
 }
 
+export interface ModuleInfo {
+  type: ShipModuleType;
+  col: number;
+  row: number;
+  hp: number;
+  maxHp: number;
+  isCore: boolean;
+}
+
 interface PlayerModule {
   type: ShipModuleType;
   col: number;
@@ -42,6 +51,8 @@ interface PlayerModule {
 }
 
 const CORE_HP_BASE = 30; // Core module HP – last line of defence before ship destruction
+const NANOBOT_REPAIR_RATE = 10; // HP per second healed by core nanobots
+const NANOBOT_REPAIR_EPSILON = 1e-6; // Floating-point threshold for nanobot repair loop
 const MODULE_HP_BY_TYPE: Record<ShipModuleType, number> = {
   hull: 34,
   engine: 24,
@@ -372,6 +383,53 @@ export class Player {
     return this.playerModules.find(m => m.alive && m.isConnected && m.isCore) ?? null;
   }
 
+  /** Apply nanobot repair: heal modules from core outward at NANOBOT_REPAIR_RATE HP/s. */
+  private _applyNanobotRepair(dt: number): void {
+    let remaining = NANOBOT_REPAIR_RATE * dt;
+    let statsChanged = false;
+    while (remaining > NANOBOT_REPAIR_EPSILON) {
+      // Collect modules that need healing
+      let minDist = Infinity;
+      for (const m of this.playerModules) {
+        if (!m.alive || !m.isConnected || m.hp >= m.maxHp) continue;
+        const d = Math.abs(m.col) + Math.abs(m.row);
+        if (d < minDist) minDist = d;
+      }
+      if (!isFinite(minDist)) break; // nothing needs healing
+      const group: PlayerModule[] = [];
+      for (const m of this.playerModules) {
+        if (!m.alive || !m.isConnected || m.hp >= m.maxHp) continue;
+        if (Math.abs(m.col) + Math.abs(m.row) === minDist) group.push(m);
+      }
+      // Distribute evenly within group, handling overflow when a module fills up
+      const active = group.slice();
+      while (remaining > NANOBOT_REPAIR_EPSILON && active.length > 0) {
+        const perModule = remaining / active.length;
+        let filledAny = false;
+        for (let i = active.length - 1; i >= 0; i--) {
+          const m = active[i];
+          const needed = m.maxHp - m.hp;
+          if (needed <= perModule) {
+            remaining -= needed;
+            m.hp = m.maxHp;
+            active.splice(i, 1);
+            filledAny = true;
+            statsChanged = true;
+          }
+        }
+        if (!filledAny) {
+          for (let i = 0; i < active.length; i++) {
+            active[i].hp = Math.min(active[i].maxHp, active[i].hp + perModule);
+          }
+          remaining = 0;
+          statsChanged = true;
+        }
+      }
+      if (remaining <= NANOBOT_REPAIR_EPSILON) break;
+    }
+    if (statsChanged) this._recalculateShipStats();
+  }
+
   /** Find the alive+connected module at a given world position (nearest grid cell). */
   private _moduleAtWorldPos(pos: Vec2): PlayerModule | null {
     const B = 7;
@@ -491,6 +549,9 @@ export class Player {
 
     // ── Damage flash countdown ────────────────────────────────────
     if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
+
+    // ── Nanobot repair (core → outward by orthogonal distance) ───────
+    this._applyNanobotRepair(dt);
 
     // ── Firing ────────────────────────────────────────────────────
     this.fireCooldown -= dt;
@@ -690,6 +751,25 @@ export class Player {
       if (core) core.hp = Math.min(core.maxHp, core.hp + remaining);
     }
     this._recalculateShipStats();
+  }
+
+  /** Returns info for the module (alive+connected) whose block area contains worldPos, or null. */
+  getModuleInfoAtWorldPos(worldPos: Vec2): ModuleInfo | null {
+    const B = 7;
+    const cosA =  Math.cos(this.angle);
+    const sinA =  Math.sin(this.angle);
+    const dx = worldPos.x - this.pos.x;
+    const dy = worldPos.y - this.pos.y;
+    const localX =  dx * cosA + dy * sinA;
+    const localY = -dx * sinA + dy * cosA;
+    for (const m of this.playerModules) {
+      if (!m.alive || !m.isConnected) continue;
+      if (Math.abs(localX - m.col * B) <= B / 2 + 0.5 &&
+          Math.abs(localY - m.row * B) <= B / 2 + 0.5) {
+        return { type: m.type, col: m.col, row: m.row, hp: m.hp, maxHp: m.maxHp, isCore: m.isCore };
+      }
+    }
+    return null;
   }
 
   draw(ctx: CanvasRenderingContext2D): void {

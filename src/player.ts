@@ -1,6 +1,8 @@
 import {
   Vec2, add, scale, normalize, sub, len, fromAngle, perpCW,
   InventoryItem, createMaterialItem, Material, TOOLBAR_ITEM_DEFS, ToolbarItemDef,
+  ShipModuleType, ShipModules, CraftingRecipe, ResourceStack,
+  UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST,
 } from './types';
 import { InputManager }  from './input';
 import { Camera }        from './camera';
@@ -19,16 +21,8 @@ const SHIELD_REGEN_DELAY = 3.0; // seconds after damage before shield starts rec
 const DAMAGE_FLASH_DURATION = 0.15; // seconds the ship flashes red after taking a hit
 const MODULE_DAMAGE_OVERLAY_ALPHA = 0.72; // maximum dark overlay alpha at 0 HP
 
-export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant' | 'weapon' | 'miningLaser';
-
-export interface ShipModules {
-  hull:        number;
-  engine:      number;
-  shield:      number;
-  coolant:     number;
-  weapon:      number;
-  miningLaser: number;
-}
+// Re-export for backward-compat with game.ts imports
+export type { ShipModuleType, ShipModules } from './types';
 
 export interface ModuleInfo {
   type: ShipModuleType;
@@ -50,9 +44,30 @@ interface PlayerModule {
   isConnected: boolean;
 }
 
+/** One entry per owned module in the palette (one entry = one craftable unit). */
+export interface ModulePaletteEntry {
+  recipeId: string;   // recipe that created it ('starter' for initial modules)
+  type:     ShipModuleType;
+}
+
+/** Convert tier number to Roman numeral string (supports 1–10). */
+export function tierToRoman(tier: number): string {
+  if (tier <= 1) return 'I';
+  const vals = [10, 9, 5, 4, 1];
+  const strs = ['X', 'IX', 'V', 'IV', 'I'];
+  let n = tier;
+  let result = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { result += strs[i]; n -= vals[i]; }
+  }
+  return result;
+}
+
 const CORE_HP_BASE = 30; // Core module HP – last line of defence before ship destruction
 const NANOBOT_REPAIR_RATE = 10; // HP per second healed by core nanobots
 const NANOBOT_REPAIR_EPSILON = 1e-6; // Floating-point threshold for nanobot repair loop
+/** Fraction of crafting recipe inputs refunded when recycling a module (25%, rounded down). */
+export const RECYCLE_REFUND_RATE = 0.25;
 const MODULE_HP_BY_TYPE: Record<ShipModuleType, number> = {
   hull: 34,
   engine: 24,
@@ -137,6 +152,20 @@ export class Player {
    */
   private _moduleSlots: Array<{ type: ShipModuleType; col: number; row: number }> | null = null;
 
+  /**
+   * Module palette: one entry per owned module instance.
+   * Populated by initStarterPalette() on game start and addModuleToPalette() on craft.
+   */
+  readonly modulePalette: ModulePaletteEntry[] = [];
+
+  /**
+   * Upgrade tier per module type (1 = base, 2 = Tier II, …, 10 = Tier X).
+   * Tier N multiplies each module's stat contribution by 2^(N-1).
+   */
+  readonly moduleTiers: Record<ShipModuleType, number> = {
+    hull: 1, engine: 1, shield: 1, coolant: 1, weapon: 1, miningLaser: 1,
+  };
+
   constructor(
     private readonly input:    InputManager,
     private readonly camera:   Camera,
@@ -156,29 +185,34 @@ export class Player {
   get moduleCounts(): Readonly<ShipModules> { return this.modules; }
 
   get accelerationMultiplier(): number {
-    return 1 + this.modules.engine * 0.14;
+    return 1 + this.modules.engine * 0.14 * this._tierMult('engine');
   }
 
   get topSpeedMultiplier(): number {
-    return 1 + this.modules.engine * 0.12;
+    return 1 + this.modules.engine * 0.12 * this._tierMult('engine');
   }
 
   get overheatDrainMultiplier(): number {
-    return Math.max(0.35, 1 - this.modules.coolant * 0.12);
+    return Math.max(0.35, 1 - this.modules.coolant * 0.12 * this._tierMult('coolant'));
   }
 
   get overheatRechargeMultiplier(): number {
-    return 1 + this.modules.coolant * 0.3;
+    return 1 + this.modules.coolant * 0.3 * this._tierMult('coolant');
   }
 
-  /** Weapon damage multiplier from weapon modules (+8% per module). */
+  /** Weapon damage multiplier from weapon modules (+8% per module, scaled by tier). */
   get weaponDamageMultiplier(): number {
-    return 1 + this.modules.weapon * 0.08;
+    return 1 + this.modules.weapon * 0.08 * this._tierMult('weapon');
   }
 
-  /** Weapon fire rate multiplier from weapon modules (+6% per module). */
+  /** Weapon fire rate multiplier from weapon modules (+6% per module, scaled by tier). */
   get weaponFireRateMultiplier(): number {
-    return 1 + this.modules.weapon * 0.06;
+    return 1 + this.modules.weapon * 0.06 * this._tierMult('weapon');
+  }
+
+  /** Mining laser damage multiplier from miningLaser tier. */
+  get miningLaserDamageMultiplier(): number {
+    return this._tierMult('miningLaser');
   }
 
   getMuzzleWorldPos(): Vec2 {
@@ -287,6 +321,94 @@ export class Player {
     return true;
   }
 
+  // ── Module palette methods ──────────────────────────────────────────────────
+
+  /**
+   * Populate the palette with the modules from the current ship layout.
+   * Called once at game start after the initial setModuleLayout.
+   */
+  initStarterPalette(): void {
+    this.modulePalette.length = 0;
+    const slots = this.getModuleSlots();
+    for (const slot of slots) {
+      this.modulePalette.push({ recipeId: 'starter', type: slot.type });
+    }
+  }
+
+  /** Returns how many modules of the given type are in the palette (total owned). */
+  getModuleCount(type: ShipModuleType): number {
+    let count = 0;
+    for (const e of this.modulePalette) { if (e.type === type) count++; }
+    return count;
+  }
+
+  /** Add one module of a given type to the palette (called on craft). */
+  addModuleToPalette(recipeId: string, type: ShipModuleType): void {
+    this.modulePalette.push({ recipeId, type });
+  }
+
+  /**
+   * Remove one module of the given type from the palette and refund 25% of the
+   * crafting recipe's inputs (rounded down). Returns the refunded resources or
+   * an empty array if the module was a starter (no recipe) or the palette had
+   * none of that type.
+   */
+  recycleModuleFromPalette(type: ShipModuleType, recipes: CraftingRecipe[]): ResourceStack[] | null {
+    const idx = this.modulePalette.findIndex(e => e.type === type);
+    if (idx === -1) return null;
+    const entry = this.modulePalette.splice(idx, 1)[0];
+    const recipe = recipes.find(r => r.id === entry.recipeId);
+    const refund: ResourceStack[] = [];
+    if (recipe) {
+      for (const input of recipe.inputs) {
+        const qty = Math.floor(input.quantity * RECYCLE_REFUND_RATE);
+        if (qty > 0) {
+          refund.push({ material: input.material, quantity: qty });
+          this.addResource(input.material, qty);
+        }
+      }
+    }
+    return refund;
+  }
+
+  // ── Module upgrade methods ──────────────────────────────────────────────────
+
+  /** Current upgrade tier for a module type (1 = base). */
+  getModuleTier(type: ShipModuleType): number {
+    return this.moduleTiers[type] ?? 1;
+  }
+
+  /** Returns the cost (gem type + quantity) for the next tier upgrade, or null if already max tier. */
+  getUpgradeCost(type: ShipModuleType): { gem: Material; count: number } | null {
+    const tier = this.getModuleTier(type);
+    if (tier > UPGRADE_TIER_GEMS.length) return null; // max tier reached
+    return {
+      gem:   UPGRADE_TIER_GEMS[tier - 1],
+      count: MODULE_UPGRADE_BASE_COST[type],
+    };
+  }
+
+  /**
+   * Upgrade a module type to the next tier using gems.
+   * Returns true on success, false if not affordable or already max tier.
+   */
+  upgradeModule(type: ShipModuleType): boolean {
+    const cost = this.getUpgradeCost(type);
+    if (!cost) return false;
+    if (this.getResource(cost.gem) < cost.count) return false;
+    this.addResource(cost.gem, -cost.count);
+    this.moduleTiers[type] += 1;
+    // Rebuild so module HP is recalculated at the new tier
+    this._rebuildPlayerModules();
+    this._recalculateShipStats();
+    return true;
+  }
+
+  /** Tier power multiplier: 2^(tier-1). T1=1×, T2=2×, T3=4× … */
+  private _tierMult(type: ShipModuleType): number {
+    return Math.pow(2, this.moduleTiers[type] - 1);
+  }
+
   /** Add material resources to inventory. */
   addResource(mat: Material, qty: number): void {
     const item = this.inventory.get(mat)!;
@@ -330,8 +452,9 @@ export class Player {
       }
     }
 
-    this.maxShield = 10 + this.modules.shield * 20 + this.levelShieldBonus;
-    this.shieldRegen = 2 + this.modules.shield * 1.8;
+    const shieldTierMult = this._tierMult('shield');
+    this.maxShield = 10 + this.modules.shield * 20 * shieldTierMult + this.levelShieldBonus;
+    this.shieldRegen = 2 + this.modules.shield * 1.8 * shieldTierMult;
 
     if (this.hasHeavyArmor) this.maxShield += 25;
     this.shield = Math.max(0, Math.min(this.maxShield, this.maxShield * shieldRatio));
@@ -341,7 +464,8 @@ export class Player {
     const slots = this.getModuleSlots();
     this.playerModules = slots.map(slot => {
       const isCore = slot.type === 'hull' && slot.col === 0 && slot.row === 0;
-      const maxHp = isCore ? CORE_HP_BASE : MODULE_HP_BY_TYPE[slot.type];
+      const tierMult = isCore ? 1 : this._tierMult(slot.type);
+      const maxHp = isCore ? CORE_HP_BASE : Math.round(MODULE_HP_BY_TYPE[slot.type] * tierMult);
       return {
         type: slot.type,
         col: slot.col,
@@ -566,11 +690,12 @@ export class Player {
 
       if (weapon.id === 'mining_laser') {
         // Instantaneous laser from each mining laser module; falls back to muzzle if no modules
+        const miningDamage = Math.round(weapon.damage * this.weaponDamageMultiplier * this.miningLaserDamageMultiplier);
         const muzzlePositions = this.getMiningLaserWorldPositions();
         if (muzzlePositions.length === 0) muzzlePositions.push(this.getMuzzleWorldPos());
         for (const muzzlePos of muzzlePositions) {
           projectiles.push(new LaserBeam(
-            muzzlePos, forward, adjustedDamage, weapon.projectileColor, 'player',
+            muzzlePos, forward, miningDamage, weapon.projectileColor, 'player',
           ));
         }
       } else if (weapon.isHoming) {

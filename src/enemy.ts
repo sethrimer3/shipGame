@@ -81,6 +81,17 @@ const RETREAT_DISTANCE_MULT   = 2.0;  // multiples of sightRange before retreat 
 const RETREAT_RECOVERY_CAP    = 0.5;  // max module-HP fraction an enemy recovers to
 const RETREAT_RECOVERY_AMOUNT = 0.2;  // fraction of max module HP restored on retreat
 
+/** Sight circle radius for patrol→chase detection (~half screen height at 600px). */
+const PATROL_SIGHT_RADIUS = 300;
+/** Duration the '!' alert indicator is shown when first spotting the player. */
+const EXCLAIM_DURATION = 0.5;
+/** Duration the '?' indicator is shown when the enemy gives up chasing. */
+const QUESTION_DURATION = 1.0;
+/** Minimum seconds before giving up the chase when the player stays out of sight. */
+const SIGHT_LOST_MIN_SEC = 5;
+/** Random additional range (seconds) added to SIGHT_LOST_MIN_SEC for the lost-timer threshold. */
+const SIGHT_LOST_RANGE_SEC = 5;
+
 export class Enemy {
   vel:   Vec2  = { x: 0, y: 0 };
   angle: number = 0;
@@ -90,6 +101,15 @@ export class Enemy {
   private patrolTarget: Vec2;
   private fireCooldown  = 0;
   private stateTimer    = 0;
+
+  /** Timer counting down while the '!' alert is visible above the enemy. */
+  private _exclamTimer  = 0;
+  /** Timer counting down while the '?' indicator is visible above the enemy. */
+  private _questionTimer = 0;
+  /** Counts up while the player is outside sight range during chase/attack. */
+  private _sightLostTimer = 0;
+  /** Random 5–10 s threshold before giving up the chase (set when chase starts). */
+  private _sightLostThreshold = 0;
 
   readonly tier: EnemyTier;
   readonly modules: EnemyModule[];
@@ -217,8 +237,35 @@ export class Enemy {
     };
   }
 
+  /** Returns a fresh random 5–10 s lost-chase threshold. */
+  private _newSightLostThreshold(): number {
+    return SIGHT_LOST_MIN_SEC + this.rng() * SIGHT_LOST_RANGE_SEC;
+  }
+
+  /**
+   * Alert this enemy that the player has attacked it. Transitions from patrol
+   * to chase even if the player is outside the normal sight radius, and resets
+   * the sight-lost timer so the enemy keeps chasing after taking a hit.
+   */
+  alertedByPlayer(): void {
+    if (this.state === 'patrol') {
+      this.state               = 'chase';
+      this.stateTimer          = 0;
+      this._exclamTimer        = EXCLAIM_DURATION;
+      this._sightLostTimer     = 0;
+      this._sightLostThreshold = this._newSightLostThreshold();
+    } else {
+      // Reset the lost timer so the enemy keeps tracking after a hit
+      this._sightLostTimer = 0;
+    }
+  }
+
   update(dt: number, player: Player, projectiles: Projectile[], particles: Particle[]): void {
     const distToPlayer = dist(this.pos, player.pos);
+
+    // ── Alert-indicator timers ────────────────────────────────────
+    if (this._exclamTimer  > 0) this._exclamTimer  -= dt;
+    if (this._questionTimer > 0) this._questionTimer -= dt;
 
     // ── State transitions ──────────────────────────────────────────
     this.stateTimer += dt;
@@ -229,10 +276,15 @@ export class Enemy {
       this.stateTimer = 0;
     }
 
+    const inSight = distToPlayer < PATROL_SIGHT_RADIUS;
+
     if (this.state === 'patrol') {
-      if (distToPlayer < this.tier.sightRange) {
-        this.state      = 'chase';
-        this.stateTimer = 0;
+      if (inSight) {
+        this.state               = 'chase';
+        this.stateTimer          = 0;
+        this._exclamTimer        = EXCLAIM_DURATION;
+        this._sightLostTimer     = 0;
+        this._sightLostThreshold = this._newSightLostThreshold();
       }
       if (this.stateTimer > 4) {
         this.patrolTarget = this._randomPatrolPoint();
@@ -242,18 +294,41 @@ export class Enemy {
       if (distToPlayer < this.tier.sightRange * 0.7) {
         this.state      = 'attack';
         this.stateTimer = 0;
-      } else if (distToPlayer > this.tier.sightRange * 1.5) {
-        this.state      = 'patrol';
-        this.stateTimer = 0;
+      }
+      // Track how long the player has been out of sight
+      if (inSight) {
+        this._sightLostTimer = 0;
+      } else {
+        this._sightLostTimer += dt;
+        if (this._sightLostTimer >= this._sightLostThreshold) {
+          this.state           = 'patrol';
+          this.stateTimer      = 0;
+          this.patrolTarget    = this._randomPatrolPoint();
+          this._questionTimer  = QUESTION_DURATION;
+          this._sightLostTimer = 0;
+        }
       }
     } else if (this.state === 'attack') {
       if (distToPlayer > this.tier.sightRange * 1.3) {
         this.state      = 'chase';
         this.stateTimer = 0;
       }
+      // Track how long the player has been out of sight
+      if (inSight) {
+        this._sightLostTimer = 0;
+      } else {
+        this._sightLostTimer += dt;
+        if (this._sightLostTimer >= this._sightLostThreshold) {
+          this.state           = 'patrol';
+          this.stateTimer      = 0;
+          this.patrolTarget    = this._randomPatrolPoint();
+          this._questionTimer  = QUESTION_DURATION;
+          this._sightLostTimer = 0;
+        }
+      }
     } else if (this.state === 'retreat') {
       // Partially recover and re-enter patrol once far enough away
-      if (distToPlayer > this.tier.sightRange * RETREAT_DISTANCE_MULT) {
+      if (distToPlayer > PATROL_SIGHT_RADIUS * RETREAT_DISTANCE_MULT) {
         // Restore module HP up to RETREAT_RECOVERY_CAP fraction of max
         const cap    = this._totalMaxHp * RETREAT_RECOVERY_CAP;
         const toHeal = Math.min(cap - this._totalHp, this._totalMaxHp * RETREAT_RECOVERY_AMOUNT);
@@ -270,7 +345,7 @@ export class Enemy {
 
     // ── Movement ───────────────────────────────────────────────────
     let targetPos: Vec2;
-    const ATTACK_RANGE = this.tier.sightRange * 0.4;
+    const ATTACK_RANGE = PATROL_SIGHT_RADIUS * 0.4;
 
     if (this.state === 'patrol') {
       targetPos = this.patrolTarget;
@@ -454,6 +529,33 @@ export class Enemy {
       ctx.font       = '9px Courier New';
       ctx.textAlign  = 'center';
       ctx.fillText('RETREATING', this.pos.x, barY - 3);
+    }
+
+    // ── Alert indicators ('!' and '?') ──────────────────────────────
+    if (this._exclamTimer > 0) {
+      const t       = this._exclamTimer / EXCLAIM_DURATION; // 1 → 0
+      const floatUp = (1 - t) * 18;
+      const alpha   = t < 0.4 ? t / 0.4 : 1;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle   = '#ffdd00';
+      ctx.font        = 'bold 15px Courier New';
+      ctx.textAlign   = 'center';
+      ctx.fillText('!', this.pos.x, barY - 8 - floatUp);
+      ctx.restore();
+    }
+
+    if (this._questionTimer > 0) {
+      const t       = this._questionTimer / QUESTION_DURATION; // 1 → 0
+      const floatUp = (1 - t) * 18;
+      const alpha   = t < 0.4 ? t / 0.4 : 1;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle   = '#aaaaff';
+      ctx.font        = 'bold 15px Courier New';
+      ctx.textAlign   = 'center';
+      ctx.fillText('?', this.pos.x, barY - 8 - floatUp);
+      ctx.restore();
     }
   }
 }

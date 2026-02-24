@@ -470,6 +470,8 @@ export class World {
           if (dist(proj.pos, enemy.pos) < enemy.radius + proj.radius) {
             proj.alive = false;
             const result = enemy.damageAt(proj.pos, proj.damage, particles, Math.random);
+            // Alert the enemy: player hit it, so it should start chasing
+            if (!result.killed) enemy.alertedByPlayer();
             // Spawn floating modules for any detached fragments
             for (const frag of result.fragments) {
               this._spawnFloatingModule(frag);

@@ -54,8 +54,8 @@ const EDITOR_CENTER = Math.floor(EDITOR_GRID_SIZE / 2);
 type EditorSlot = { row: number; col: number };
 
 const toEditorSlot = (shipCol: number, shipRow: number): EditorSlot => ({
-  row: EDITOR_CENTER + shipRow,
-  col: EDITOR_CENTER + shipCol,
+  row: EDITOR_CENTER - shipCol,
+  col: EDITOR_CENTER + shipRow,
 });
 
 // Keep this aligned with Player._buildShipBlocks so the editor layout matches the rendered ship silhouette.
@@ -95,7 +95,7 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 ];
 
 
-const BUILD_NUMBER = 2;
+const BUILD_NUMBER = 3;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -254,14 +254,14 @@ class Game {
     }
     if (!this.input.isDown('tab')) this._settingsKeyHeld = false;
 
-    if (this.input.isDown('b') && !this._shipEditorKeyHeld) {
+    if (this.input.isDown('c') && !this._shipEditorKeyHeld) {
       this._shipEditorOpen = !this._shipEditorOpen;
       this._shipEditorKeyHeld = true;
       this._setShipEditorVisible(this._shipEditorOpen);
     }
-    if (!this.input.isDown('b')) this._shipEditorKeyHeld = false;
+    if (!this.input.isDown('c')) this._shipEditorKeyHeld = false;
 
-    if (this._settingsOpen || this._shipEditorOpen) return;
+    if (this._settingsOpen || this._shipEditorOpen || this.crafting.isOpen()) return;
 
     // ── Toolbar navigation ──────────────────────────────────────────
     const scroll = this.input.consumeScroll();
@@ -277,14 +277,6 @@ class Game {
       }
     }
 
-    // ── Crafting toggle ─────────────────────────────────────────────
-    if (this.input.isDown('c') && !this._craftingKeyHeld) {
-      this.crafting.toggle();
-      this._craftingKeyHeld = true;
-    }
-    if (!this.input.isDown('c')) this._craftingKeyHeld = false;
-
-    if (this.crafting.isOpen()) return; // pause game while crafting
 
     // ── Player ─────────────────────────────────────────────────────
     this.player.update(dt, this.toolbar.selected, this.advancedMovement, this.particles, this.projectiles);
@@ -402,6 +394,14 @@ class Game {
 
 
   private _initShipEditor(): void {
+    const closeCraftingBtn = document.getElementById('close-crafting');
+    if (closeCraftingBtn) {
+      closeCraftingBtn.addEventListener('click', () => {
+        this._shipEditorOpen = false;
+        this._setShipEditorVisible(false);
+      });
+    }
+
     const closeBtn = document.getElementById('close-ship-editor');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
@@ -417,8 +417,8 @@ class Game {
         // Convert editor positions to ship-local positions and apply
         const shipSlots = this._pendingModuleSlots.map(s => ({
           type: s.type,
-          col:  s.col - EDITOR_CENTER,
-          row:  s.row - EDITOR_CENTER,
+          col:  EDITOR_CENTER - s.row,
+          row:  s.col - EDITOR_CENTER,
         }));
         this.player.setModuleLayout(shipSlots);
         this._pendingModuleSlots = this._slotsFromPlayer();
@@ -522,6 +522,11 @@ class Game {
     if (visible) {
       this._pendingModuleSlots = this._slotsFromPlayer();
       this._refreshShipEditorPanel();
+      this.crafting.show();
+      document.body.classList.add('ship-editor-layout-open');
+    } else {
+      this.crafting.hide();
+      document.body.classList.remove('ship-editor-layout-open');
     }
   }
 
@@ -533,8 +538,8 @@ class Game {
   /** Convert the player's current module layout into editor-grid slot entries. */
   private _slotsFromPlayer(): Array<{ row: number; col: number; type: ShipModuleType }> {
     return this.player.getModuleSlots().map(s => ({
-      row:  s.row + EDITOR_CENTER,
-      col:  s.col + EDITOR_CENTER,
+      row:  EDITOR_CENTER - s.col,
+      col:  s.row + EDITOR_CENTER,
       type: s.type,
     }));
   }
@@ -686,7 +691,6 @@ class Game {
     return true;
   }
 
-  private _craftingKeyHeld = false;
   private _pauseKeyHeld    = false;
 
   // ── Render ─────────────────────────────────────────────────────────────────

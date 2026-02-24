@@ -496,10 +496,25 @@ body {
   background: rgba(8, 18, 26, 0.96);
   border: 1px solid rgba(120, 220, 255, 0.45);
   border-radius: 8px;
-  padding: 20px;
-  width: 620px;
+  padding: 16px;
+  width: 920px;
   pointer-events: all;
   z-index: 100;
+}
+
+
+.editor-layout {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 12px;
+}
+
+.editor-palette-window,
+.editor-grid-window {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 10px;
 }
 
 #ship-editor-panel h2 {
@@ -582,9 +597,9 @@ body {
 
 #ship-editor-palette {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 .editor-palette-item {
@@ -647,4 +662,12 @@ body {
 
 #close-ship-editor:hover {
   background: rgba(255, 80, 80, 0.3);
+}
+
+body.ship-editor-layout-open #crafting-panel {
+  top: 50%;
+  left: calc(50% + 590px);
+  transform: translateY(-50%);
+  width: 320px;
+  max-height: 72vh;
 }

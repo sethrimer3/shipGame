@@ -4,6 +4,7 @@ export type ProjectileOwner = 'player' | 'enemy';
 
 export class Projectile {
   pos:     Vec2;
+  prevPos: Vec2;
   vel:     Vec2;
   alive    = true;
   lifetime = 0;
@@ -19,11 +20,14 @@ export class Projectile {
     public readonly maxLife: number = 3,
   ) {
     this.pos = { ...pos };
+    this.prevPos = { ...pos };
     const n  = normalize(dir);
     this.vel = scale(n, speed);
   }
 
   update(dt: number): void {
+    this.prevPos.x = this.pos.x;
+    this.prevPos.y = this.pos.y;
     this.pos.x   += this.vel.x * dt;
     this.pos.y   += this.vel.y * dt;
     this.lifetime += dt;

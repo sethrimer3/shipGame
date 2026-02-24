@@ -10,6 +10,21 @@ import { Mothership, mothershipTierForDist } from './mothership';
 // ── Physics helpers ──────────────────────────────────────────────────────────
 
 /**
+ * Returns true when a circle (cx, cy, r) overlaps an axis-aligned rectangle
+ * (rx, ry, rw, rh).  Uses the nearest-point-on-rect method.
+ */
+function circleVsRect(
+  cx: number, cy: number, r: number,
+  rx: number, ry: number, rw: number, rh: number,
+): boolean {
+  const nearX = Math.max(rx, Math.min(cx, rx + rw));
+  const nearY = Math.max(ry, Math.min(cy, ry + rh));
+  const dx = cx - nearX;
+  const dy = cy - nearY;
+  return dx * dx + dy * dy <= r * r;
+}
+
+/**
  * Resolve a ship vs asteroid circle collision using impulse physics.
  * Mutates ship pos/vel and asteroid pos/vel in place.
  */
@@ -392,7 +407,19 @@ export class World {
         if (!asteroid.alive) continue;
         for (const proj of projectiles) {
           if (!proj.alive) continue;
-          const block = asteroid.blockAt(proj.pos);
+          const lx = proj.pos.x - asteroid.pos.x;
+          const ly = proj.pos.y - asteroid.pos.y;
+          let block = asteroid.blockAt(proj.pos);
+          if (!block) {
+            // Radius-aware fallback: find first block whose rect the projectile circle overlaps
+            for (const b of asteroid.blocks) {
+              if (!b.alive) continue;
+              if (circleVsRect(lx, ly, proj.radius, b.col * BLOCK_SIZE, b.row * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)) {
+                block = b;
+                break;
+              }
+            }
+          }
           if (block) {
             // Trap asteroid: trigger drone swarm on first hit
             if (asteroid.isTrap && !asteroid.trapTriggered) {
@@ -723,10 +750,7 @@ export class World {
       if (!block.alive) continue;
       for (const proj of projectiles) {
         if (!proj.alive) continue;
-        if (
-          proj.pos.x >= block.pos.x && proj.pos.x < block.pos.x + BLOCK_SIZE &&
-          proj.pos.y >= block.pos.y && proj.pos.y < block.pos.y + BLOCK_SIZE
-        ) {
+        if (circleVsRect(proj.pos.x, proj.pos.y, proj.radius, block.pos.x, block.pos.y, BLOCK_SIZE, BLOCK_SIZE)) {
           proj.alive = false;
           block.hp  -= proj.damage;
           if (block.hp <= 0) block.alive = false;

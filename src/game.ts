@@ -95,7 +95,7 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 ];
 
 
-const BUILD_NUMBER = 5;
+const BUILD_NUMBER = 6;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -211,6 +211,28 @@ class Game {
     this.canvas.width  = this.canvas.clientWidth  || window.innerWidth;
     this.canvas.height = this.canvas.clientHeight || window.innerHeight;
     this.camera.resize(this.canvas.width, this.canvas.height);
+    this._updateUiPanelScaling();
+  }
+
+  private _updateUiPanelScaling(): void {
+    const setPanelScale = (panelId: string, marginPx: number): void => {
+      const panel = document.getElementById(panelId) as HTMLDivElement | null;
+      if (!panel) return;
+      const priorScale = panel.style.getPropertyValue('--panel-scale');
+      panel.style.setProperty('--panel-scale', '1');
+      const rect = panel.getBoundingClientRect();
+      const maxWidth = Math.max(120, window.innerWidth - marginPx * 2);
+      const maxHeight = Math.max(120, window.innerHeight - marginPx * 2);
+      const fitScale = Math.min(maxWidth / Math.max(1, rect.width), maxHeight / Math.max(1, rect.height), 1);
+      const nextScale = Number.isFinite(fitScale) ? fitScale : 1;
+      const roundedScale = Math.max(0.55, Math.min(1, Math.round(nextScale * 1000) / 1000));
+      if (priorScale !== String(roundedScale)) {
+        panel.style.setProperty('--panel-scale', String(roundedScale));
+      }
+    };
+
+    setPanelScale('crafting-panel', 24);
+    setPanelScale('ship-editor-panel', 24);
   }
 
   // ── Main loop ──────────────────────────────────────────────────────────────
@@ -528,6 +550,7 @@ class Game {
       this.crafting.hide();
       document.body.classList.remove('ship-editor-layout-open');
     }
+    this._updateUiPanelScaling();
   }
 
   /** Build a Set of "row,col" strings for quick lookup of valid slot positions. */

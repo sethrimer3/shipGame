@@ -210,7 +210,9 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  --panel-scale: 1;
+  transform: translate(-50%, -50%) scale(var(--panel-scale));
+  transform-origin: center center;
   background: rgba(10, 15, 25, 0.95);
   border: 1px solid rgba(100, 150, 255, 0.4);
   border-radius: 8px;
@@ -492,7 +494,9 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  --panel-scale: 1;
+  transform: translate(-50%, -50%) scale(var(--panel-scale));
+  transform-origin: center center;
   background: rgba(8, 18, 26, 0.96);
   border: 1px solid rgba(120, 220, 255, 0.45);
   border-radius: 8px;
@@ -667,7 +671,8 @@ body {
 body.ship-editor-layout-open #crafting-panel {
   top: 50%;
   left: calc(50% + 590px);
-  transform: translateY(-50%);
+  transform: translateY(-50%) scale(var(--panel-scale));
+  transform-origin: center center;
   width: 320px;
   max-height: 72vh;
 }

@@ -87,6 +87,94 @@ function segmentCircleClosestT(
   return Math.max(0, Math.min(1, t));
 }
 
+
+function segmentRectEntryTime(
+  x1: number, y1: number,
+  x2: number, y2: number,
+  rx: number, ry: number, rw: number, rh: number,
+): number | null {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let tMin = 0;
+  let tMax = 1;
+
+  const axisCheck = (p: number, qMin: number, qMax: number): boolean => {
+    if (Math.abs(p) < 1e-8) {
+      if (qMin > 0 || qMax < 0) return false;
+      return true;
+    }
+    const inv = 1 / p;
+    let t1 = qMin * inv;
+    let t2 = qMax * inv;
+    if (t1 > t2) {
+      const temp = t1;
+      t1 = t2;
+      t2 = temp;
+    }
+    tMin = Math.max(tMin, t1);
+    tMax = Math.min(tMax, t2);
+    return tMin <= tMax;
+  };
+
+  if (!axisCheck(dx, rx - x1, (rx + rw) - x1)) return null;
+  if (!axisCheck(dy, ry - y1, (ry + rh) - y1)) return null;
+  return tMin;
+}
+
+function steerShipAroundAsteroids(
+  shipPos: Vec2,
+  shipVel: Vec2,
+  shipRadius: number,
+  asteroids: Asteroid[],
+  dtSec: number,
+): void {
+  const speed = Math.sqrt(shipVel.x * shipVel.x + shipVel.y * shipVel.y);
+  if (speed < 1) return;
+
+  const lookAheadSec = Math.min(0.55, Math.max(0.2, speed * 0.0018));
+  const forwardX = shipVel.x / speed;
+  const forwardY = shipVel.y / speed;
+  let avoidX = 0;
+  let avoidY = 0;
+
+  for (const asteroid of asteroids) {
+    if (!asteroid.alive) continue;
+    const combinedRadius = asteroid.radius + shipRadius;
+    const toAsteroidX = asteroid.centre.x - shipPos.x;
+    const toAsteroidY = asteroid.centre.y - shipPos.y;
+    const forwardDist = toAsteroidX * forwardX + toAsteroidY * forwardY;
+    if (forwardDist < -combinedRadius || forwardDist > speed * lookAheadSec + combinedRadius) continue;
+
+    const closestX = shipPos.x + forwardX * Math.max(0, Math.min(speed * lookAheadSec, forwardDist));
+    const closestY = shipPos.y + forwardY * Math.max(0, Math.min(speed * lookAheadSec, forwardDist));
+    const offX = closestX - asteroid.centre.x;
+    const offY = closestY - asteroid.centre.y;
+    const offDistSq = offX * offX + offY * offY;
+    if (offDistSq >= combinedRadius * combinedRadius) continue;
+
+    const offDist = Math.sqrt(Math.max(1e-8, offDistSq));
+    const penetration = 1 - offDist / Math.max(1, combinedRadius);
+    avoidX += (offX / offDist) * penetration;
+    avoidY += (offY / offDist) * penetration;
+  }
+
+  const avoidMag = Math.sqrt(avoidX * avoidX + avoidY * avoidY);
+  if (avoidMag < 1e-5) return;
+
+  const blend = Math.min(1, dtSec * 6);
+  const tangentX = -avoidY / avoidMag;
+  const tangentY = avoidX / avoidMag;
+  const tangentDir = (tangentX * forwardX + tangentY * forwardY) >= 0 ? 1 : -1;
+  const desiredX = (avoidX / avoidMag) * 0.35 + tangentX * tangentDir;
+  const desiredY = (avoidY / avoidMag) * 0.35 + tangentY * tangentDir;
+  const desiredMag = Math.sqrt(desiredX * desiredX + desiredY * desiredY) || 1;
+
+  const steerX = (desiredX / desiredMag) * speed;
+  const steerY = (desiredY / desiredMag) * speed;
+  shipVel.x = shipVel.x * (1 - blend) + steerX * blend;
+  shipVel.y = shipVel.y * (1 - blend) + steerY * blend;
+}
+
 /**
  * Resolve a ship vs asteroid circle collision using impulse physics.
  * Mutates ship pos/vel and asteroid pos/vel in place.
@@ -461,6 +549,7 @@ export class World {
       // ── Enemy AI ──────────────────────────────────────────────────
       for (const enemy of chunk.enemies) {
         if (!enemy.alive) continue;
+        steerShipAroundAsteroids(enemy.pos, enemy.vel, enemy.radius, chunk.asteroids, dt);
         enemy.update(dt, player, projectiles, particles);
       }
       chunk.enemies = chunk.enemies.filter(e => e.alive);
@@ -476,18 +565,28 @@ export class World {
           const prevLy = proj.prevPos.y - asteroid.pos.y;
           let block = asteroid.blockAt(proj.pos);
           if (!block) {
+            let bestHitT = Number.POSITIVE_INFINITY;
             for (const b of asteroid.blocks) {
               if (!b.alive) continue;
               const blockX = b.col * BLOCK_SIZE;
               const blockY = b.row * BLOCK_SIZE;
-              if (
+              const intersects =
                 circleVsRect(lx, ly, proj.radius, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
                 || circleVsRect(prevLx, prevLy, proj.radius, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
-                || segmentIntersectsRect(prevLx, prevLy, lx, ly, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
-              ) {
-                block = b;
-                break;
-              }
+                || segmentIntersectsRect(prevLx, prevLy, lx, ly, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE);
+              if (!intersects) continue;
+              const hitT = segmentRectEntryTime(
+                prevLx, prevLy,
+                lx, ly,
+                blockX - proj.radius,
+                blockY - proj.radius,
+                BLOCK_SIZE + proj.radius * 2,
+                BLOCK_SIZE + proj.radius * 2,
+              );
+              const sortT = hitT ?? 0;
+              if (sortT >= bestHitT) continue;
+              bestHitT = sortT;
+              block = b;
             }
           }
           if (block) {
@@ -862,7 +961,19 @@ export class World {
     // ── Drone update ──────────────────────────────────────────────
     for (const drone of this.drones) {
       if (!drone.alive) continue;
+      const nearbyAsteroids: Asteroid[] = [];
+      for (const chunk of chunks) {
+        for (const asteroid of chunk.asteroids) {
+          if (!asteroid.alive) continue;
+          const reach = drone.radius + asteroid.radius + 260;
+          if (dist(drone.pos, asteroid.centre) <= reach) nearbyAsteroids.push(asteroid);
+        }
+      }
+      steerShipAroundAsteroids(drone.pos, drone.vel, drone.radius, nearbyAsteroids, dt);
       drone.update(dt, player, projectiles, particles);
+      for (const asteroid of nearbyAsteroids) {
+        resolveShipAsteroidCollision(drone.pos, drone.vel, drone.radius, drone.mass, asteroid);
+      }
     }
 
     // ── Drone-projectile collisions (player hits drone) ───────────

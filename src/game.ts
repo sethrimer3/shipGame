@@ -95,7 +95,7 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 ];
 
 
-const BUILD_NUMBER = 7;
+const BUILD_NUMBER = 8;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -158,6 +158,26 @@ class Game {
 
     this.input   = new InputManager(this.canvas);
     this.player  = new Player(this.input, this.camera);
+    // Set the initial 3×5 ship structure:
+    //   |-|MiningLaser|-|
+    //   |Hull|Hull|Hull|
+    //   |Hull|Core|Hull|   ← Core is the hull block at col=0,row=0 (rendered gold)
+    //   |Hull|Hull|Hull|
+    //   |Engine|-|Engine|
+    this.player.setModuleLayout([
+      { type: 'miningLaser', col:  2, row:  0 },
+      { type: 'hull',        col:  1, row: -1 },
+      { type: 'hull',        col:  1, row:  0 },
+      { type: 'hull',        col:  1, row:  1 },
+      { type: 'hull',        col:  0, row: -1 },
+      { type: 'hull',        col:  0, row:  0 }, // Core (col=0,row=0 → gold highlight)
+      { type: 'hull',        col:  0, row:  1 },
+      { type: 'hull',        col: -1, row: -1 },
+      { type: 'hull',        col: -1, row:  0 },
+      { type: 'hull',        col: -1, row:  1 },
+      { type: 'engine',      col: -2, row: -1 },
+      { type: 'engine',      col: -2, row:  1 },
+    ]);
     this.world   = new World();
     this.toolbar = new Toolbar();
     this.hud     = new HUD();

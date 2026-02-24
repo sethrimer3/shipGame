@@ -4,6 +4,43 @@ import { Player } from './player';
 import { Projectile } from './projectile';
 import { Particle, makeExplosion } from './particle';
 
+/** Returns true if the segment (x1,y1)→(x2,y2) intersects the AABB (rx,ry,rw,rh). */
+function segmentVsRect(
+  x1: number, y1: number, x2: number, y2: number,
+  rx: number, ry: number, rw: number, rh: number,
+): boolean {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let tMin = 0;
+  let tMax = 1;
+
+  if (Math.abs(dx) < 1e-8) {
+    if (x1 < rx || x1 > rx + rw) return false;
+  } else {
+    const inv = 1 / dx;
+    let t1 = (rx - x1) * inv;
+    let t2 = (rx + rw - x1) * inv;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tMin = Math.max(tMin, t1);
+    tMax = Math.min(tMax, t2);
+    if (tMin > tMax) return false;
+  }
+
+  if (Math.abs(dy) < 1e-8) {
+    if (y1 < ry || y1 > ry + rh) return false;
+  } else {
+    const inv = 1 / dy;
+    let t1 = (ry - y1) * inv;
+    let t2 = (ry + rh - y1) * inv;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tMin = Math.max(tMin, t1);
+    tMax = Math.min(tMax, t2);
+    if (tMin > tMax) return false;
+  }
+
+  return true;
+}
+
 /** A small gun turret attached to the surface of an asteroid. */
 export class AsteroidTurret {
   pos:   Vec2;
@@ -59,14 +96,30 @@ export class AsteroidTurret {
     this.fireCooldown -= dt;
     if (this.fireCooldown <= 0) {
       this.fireCooldown = 1 / this._fireRate;
-      const dir = { x: dx / d, y: dy / d };
-      // Spawn from just outside the turret barrel tip
-      const spawnX = this.pos.x + Math.cos(this.angle) * (this.radius + 4);
-      const spawnY = this.pos.y + Math.sin(this.angle) * (this.radius + 4);
-      projectiles.push(new Projectile(
-        { x: spawnX, y: spawnY }, dir, 380, this._damage, 3, '#ff4400', 'enemy', 3,
-      ));
+      // Only fire when line of sight to player is clear of own asteroid blocks
+      if (this._hasLineOfSight(player.pos)) {
+        const dir = { x: dx / d, y: dy / d };
+        // Spawn from just outside the turret barrel tip
+        const spawnX = this.pos.x + Math.cos(this.angle) * (this.radius + 4);
+        const spawnY = this.pos.y + Math.sin(this.angle) * (this.radius + 4);
+        projectiles.push(new Projectile(
+          { x: spawnX, y: spawnY }, dir, 380, this._damage, 3, '#ff4400', 'enemy', 3,
+        ));
+      }
     }
+  }
+
+  /** Returns true when no live asteroid block (other than the turret's own) occludes the path to target. */
+  private _hasLineOfSight(target: Vec2): boolean {
+    for (const b of this._asteroid.blocks) {
+      if (b === this._block || !b.alive) continue;
+      const bx = this._asteroid.pos.x + b.col * BLOCK_SIZE;
+      const by = this._asteroid.pos.y + b.row * BLOCK_SIZE;
+      if (segmentVsRect(this.pos.x, this.pos.y, target.x, target.y, bx, by, BLOCK_SIZE, BLOCK_SIZE)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /** Deal damage; returns true if destroyed. */

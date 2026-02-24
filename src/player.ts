@@ -4,7 +4,7 @@ import {
 } from './types';
 import { InputManager }  from './input';
 import { Camera }        from './camera';
-import { Projectile, HomingRocket } from './projectile';
+import { Projectile, HomingRocket, LaserBeam } from './projectile';
 import { Particle, makeExplosion } from './particle';
 
 const THRUST_FORCE  = 700;  // px/s²
@@ -18,15 +18,22 @@ const OVERHEAT_RECHARGE_RATE = 18;
 const SHIELD_REGEN_DELAY = 3.0; // seconds after damage before shield starts recharging
 const DAMAGE_FLASH_DURATION = 0.15; // seconds the ship flashes red after taking a hit
 
-export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant' | 'weapon';
+export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant' | 'weapon' | 'miningLaser';
 
 export interface ShipModules {
-  hull:    number;
-  engine:  number;
-  shield:  number;
-  coolant: number;
-  weapon:  number;
+  hull:        number;
+  engine:      number;
+  shield:      number;
+  coolant:     number;
+  weapon:      number;
+  miningLaser: number;
 }
+
+const CORE_HP_BASE = 30; // Core module HP – last line of defence before ship destruction
+/** Ship-local [col, row] positions of mining laser modules, ordered by priority. */
+const MINING_LASER_MODULE_SLOTS: ReadonlyArray<[number, number]> = [
+  [4, 0], [4, -1], [4, 1], [5, 0],
+];
 
 export class Player {
   pos: Vec2  = { x: 0, y: 0 };
@@ -39,6 +46,10 @@ export class Player {
   maxShield  = 60;
   shield     = 60;
   shieldRegen = 8; // per second
+
+  /** Core module HP – ship is destroyed only when this reaches 0. */
+  maxCoreHp  = CORE_HP_BASE;
+  coreHp     = CORE_HP_BASE;
 
   /** Experience points accumulated this run. */
   xp    = 0;
@@ -73,6 +84,7 @@ export class Player {
     shield: 2,
     coolant: 1,
     weapon: 0,
+    miningLaser: 1,
   };
 
   constructor(
@@ -88,7 +100,7 @@ export class Player {
     this._recalculateShipStats();
   }
 
-  get alive(): boolean { return this.hp > 0; }
+  get alive(): boolean { return this.coreHp > 0; }
   get overheatRatio(): number { return this.overheatMeter / OVERHEAT_MAX; }
   get moduleCounts(): Readonly<ShipModules> { return this.modules; }
 
@@ -126,6 +138,25 @@ export class Player {
     };
   }
 
+  /** Returns the world-space positions of each mining laser module (nose-mounted). */
+  getMiningLaserWorldPositions(): Vec2[] {
+    const B = 7;
+    const cosA = Math.cos(this.angle);
+    const sinA = Math.sin(this.angle);
+    const count = Math.min(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS.length);
+    const positions: Vec2[] = [];
+    for (let i = 0; i < count; i++) {
+      const [col, row] = MINING_LASER_MODULE_SLOTS[i];
+      const lx = col * B;
+      const ly = row * B;
+      positions.push({
+        x: this.pos.x + lx * cosA - ly * sinA,
+        y: this.pos.y + lx * sinA + ly * cosA,
+      });
+    }
+    return positions;
+  }
+
   /** XP required to reach the next level. */
   xpToNextLevel(): number { return this.level * 100; }
 
@@ -152,11 +183,12 @@ export class Player {
 
   setModules(next: ShipModules): void {
     this.modules = {
-      hull:    Math.max(1, Math.floor(next.hull)),
-      engine:  Math.max(0, Math.floor(next.engine)),
-      shield:  Math.max(0, Math.floor(next.shield)),
-      coolant: Math.max(0, Math.floor(next.coolant)),
-      weapon:  Math.max(0, Math.floor(next.weapon)),
+      hull:        Math.max(1, Math.floor(next.hull)),
+      engine:      Math.max(0, Math.floor(next.engine)),
+      shield:      Math.max(0, Math.floor(next.shield)),
+      coolant:     Math.max(0, Math.floor(next.coolant)),
+      weapon:      Math.max(0, Math.floor(next.weapon)),
+      miningLaser: Math.max(0, Math.floor(next.miningLaser)),
     };
     this._recalculateShipStats();
   }
@@ -286,7 +318,16 @@ export class Player {
       this.fireCooldown    = 1 / adjustedRate;
       const adjustedDamage = Math.round(weapon.damage * this.weaponDamageMultiplier);
 
-      if (weapon.isHoming) {
+      if (weapon.id === 'mining_laser') {
+        // Instantaneous laser from each mining laser module; falls back to muzzle if no modules
+        const muzzlePositions = this.getMiningLaserWorldPositions();
+        if (muzzlePositions.length === 0) muzzlePositions.push(this.getMuzzleWorldPos());
+        for (const muzzlePos of muzzlePositions) {
+          projectiles.push(new LaserBeam(
+            muzzlePos, forward, adjustedDamage, weapon.projectileColor, 'player',
+          ));
+        }
+      } else if (weapon.isHoming) {
         // Homing rocket – tracks the player's mouse cursor in real time
         const cam = this.camera;
         const inp = this.input;
@@ -372,7 +413,7 @@ export class Player {
     }
   }
 
-  /** Take damage (shield absorbs first). */
+  /** Take damage (shield absorbs first, then hull HP, then core HP). */
   damage(amount: number): void {
     this.recentDamage += amount;
     this.shieldRegenDelay = SHIELD_REGEN_DELAY;
@@ -381,7 +422,12 @@ export class Player {
     const shieldAbsorb = Math.min(this.shield, remaining);
     this.shield   -= shieldAbsorb;
     remaining     -= shieldAbsorb;
-    this.hp        = Math.max(0, this.hp - remaining);
+    if (remaining <= 0) return;
+    const hullAbsorb = Math.min(this.hp, remaining);
+    this.hp       = Math.max(0, this.hp - hullAbsorb);
+    remaining     -= hullAbsorb;
+    if (remaining <= 0) return;
+    this.coreHp   = Math.max(0, this.coreHp - remaining);
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
@@ -447,7 +493,8 @@ export class Player {
     const hullCount = Math.min(this.modules.hull, hullSlots.length);
     for (let i = 0; i < hullCount; i++) {
       const [col, row] = hullSlots[i];
-      const color = col >= 2 ? '#5df093' : col >= 0 ? '#2ecc71' : '#1a9957';
+      // Center block [0,0] is the CORE – highlight it with a distinct gold color
+      const color = (i === 0) ? '#f1c40f' : (col >= 2 ? '#5df093' : col >= 0 ? '#2ecc71' : '#1a9957');
       blocks.push({ col, row, color });
     }
 
@@ -458,10 +505,11 @@ export class Player {
       }
     };
 
-    addSpecial(this.modules.engine,  [[-3, -1], [-3, 1], [-4, 0], [-4, -1], [-4, 1]], '#7fd9ff');
-    addSpecial(this.modules.shield,  [[0, -3], [0, 3], [1, -3], [1, 3], [-1, -3], [-1, 3]], '#9f8cff');
-    addSpecial(this.modules.coolant, [[-2, -2], [-2, 2], [-3, -2], [-3, 2]], '#7fffd2');
-    addSpecial(this.modules.weapon,  [[2, -3], [2, 3], [3, -1], [3, 1]], '#ff4444');
+    addSpecial(this.modules.engine,      [[-3, -1], [-3, 1], [-4, 0], [-4, -1], [-4, 1]], '#7fd9ff');
+    addSpecial(this.modules.shield,      [[0, -3], [0, 3], [1, -3], [1, 3], [-1, -3], [-1, 3]], '#9f8cff');
+    addSpecial(this.modules.coolant,     [[-2, -2], [-2, 2], [-3, -2], [-3, 2]], '#7fffd2');
+    addSpecial(this.modules.weapon,      [[2, -3], [2, 3], [3, -1], [3, 1]], '#ff4444');
+    addSpecial(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS as Array<[number, number]>, '#7ed6f3');
     return blocks;
   }
 }

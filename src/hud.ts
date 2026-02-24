@@ -32,7 +32,12 @@ export class HUD {
   private notifTimer = 0;
 
   update(player: Player, dt: number, kills: number): void {
-    this.healthBar.style.width = `${(player.hp    / player.maxHp)    * 100}%`;
+    // Health bar shows total effective HP: hull + core combined
+    const totalHp    = player.hp + player.coreHp;
+    const totalMaxHp = player.maxHp + player.maxCoreHp;
+    this.healthBar.style.width = `${(totalHp / totalMaxHp) * 100}%`;
+    // Tint red when only core HP remains (hull gone)
+    this.healthBar.style.background = player.hp <= 0 ? '#ff4444' : '';
     this.shieldBar.style.width = `${(player.shield / player.maxShield) * 100}%`;
 
     this.xpBar.style.width     = `${(player.xp / player.xpToNextLevel()) * 100}%`;

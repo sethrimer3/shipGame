@@ -17,6 +17,7 @@ const OVERHEAT_DRAIN_RATE = 25;
 const OVERHEAT_RECHARGE_RATE = 18;
 const SHIELD_REGEN_DELAY = 3.0; // seconds after damage before shield starts recharging
 const DAMAGE_FLASH_DURATION = 0.15; // seconds the ship flashes red after taking a hit
+const MODULE_DAMAGE_OVERLAY_ALPHA = 0.72; // maximum dark overlay alpha at 0 HP
 
 export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant' | 'weapon' | 'miningLaser';
 
@@ -371,6 +372,52 @@ export class Player {
     return this.playerModules.find(m => m.alive && m.isConnected && m.isCore) ?? null;
   }
 
+  /** Find the alive+connected module at a given world position (nearest grid cell). */
+  private _moduleAtWorldPos(pos: Vec2): PlayerModule | null {
+    const B = 7;
+    const cosA =  Math.cos(this.angle);
+    const sinA =  Math.sin(this.angle);
+    const dx = pos.x - this.pos.x;
+    const dy = pos.y - this.pos.y;
+    // Rotate hit position into ship-local space
+    const localX =  dx * cosA + dy * sinA;
+    const localY = -dx * sinA + dy * cosA;
+    const col = Math.round(localX / B);
+    const row = Math.round(localY / B);
+    // Exact hit first
+    const exact = this.playerModules.find(m => m.alive && m.isConnected && m.col === col && m.row === row);
+    if (exact) return exact;
+    // Nearest alive+connected module as fallback
+    let best: PlayerModule | null = null;
+    let bestDist = Infinity;
+    for (const m of this.playerModules) {
+      if (!m.alive || !m.isConnected) continue;
+      const d = (m.col - col) ** 2 + (m.row - row) ** 2;
+      if (d < bestDist) { bestDist = d; best = m; }
+    }
+    return best;
+  }
+
+  /** Spawn small square debris particles at a world position using the given colour. */
+  private _spawnModuleDebris(pos: Vec2, color: string, particles: Particle[]): void {
+    const count = 8 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < count; i++) {
+      const ang      = Math.random() * Math.PI * 2;
+      const speed    = 20 + Math.random() * 60;
+      const lifetime = 5 + Math.random() * 5;
+      particles.push({
+        pos:      { x: pos.x, y: pos.y },
+        vel:      { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed },
+        color,
+        radius:   2 + Math.random() * 2,
+        lifetime,
+        maxLife:  lifetime,
+        alpha:    1,
+        shape:    'square',
+      });
+    }
+  }
+
   update(
     dt:           number,
     selectedSlot: number,
@@ -577,6 +624,55 @@ export class Player {
     this._recalculateShipStats();
   }
 
+  /**
+   * Positional damage: the projectile hit position is used to determine
+   * which specific module absorbs the damage.  Shield absorbs first; once
+   * depleted the module nearest the hit position loses HP.  If that module
+   * is destroyed it spawns square debris particles coloured like the module.
+   */
+  damageModule(pos: Vec2, amount: number, particles: Particle[]): void {
+    this.recentDamage += amount;
+    this.shieldRegenDelay = SHIELD_REGEN_DELAY;
+    this.damageFlashTimer = DAMAGE_FLASH_DURATION;
+
+    let remaining = amount;
+    const shieldAbsorb = Math.min(this.shield, remaining);
+    this.shield -= shieldAbsorb;
+    remaining -= shieldAbsorb;
+
+    if (remaining <= 0) {
+      this._recalculateShipStats();
+      return;
+    }
+
+    const target = this._moduleAtWorldPos(pos);
+    if (!target) {
+      this._recalculateShipStats();
+      return;
+    }
+
+    const absorbed = Math.min(target.hp, remaining);
+    target.hp -= absorbed;
+
+    if (target.hp <= 0) {
+      target.alive = false;
+      target.hp = 0;
+      const B = 7;
+      const cosA = Math.cos(this.angle);
+      const sinA = Math.sin(this.angle);
+      const wx = this.pos.x + target.col * B * cosA - target.row * B * sinA;
+      const wy = this.pos.y + target.col * B * sinA + target.row * B * cosA;
+      this._spawnModuleDebris(
+        { x: wx, y: wy },
+        this._moduleColor(target.type, target.col, target.row),
+        particles,
+      );
+      this._refreshConnectivity();
+    }
+
+    this._recalculateShipStats();
+  }
+
 
   heal(amount: number): void {
     let remaining = amount;
@@ -618,11 +714,16 @@ export class Player {
     const flashing = this.damageFlashTimer > 0;
 
     for (const block of blocks) {
-      const { col, row, color } = block;
+      const { col, row, color, hpRatio } = block;
       const x = col * B - B / 2;
       const y = row * B - B / 2;
       ctx.fillStyle = flashing ? '#ff4444' : color;
       ctx.fillRect(x, y, B, B);
+      // Darken the block proportionally to damage taken
+      if (!flashing && hpRatio < 1) {
+        ctx.fillStyle = `rgba(0,0,0,${(1 - hpRatio) * MODULE_DAMAGE_OVERLAY_ALPHA})`;
+        ctx.fillRect(x, y, B, B);
+      }
       ctx.strokeStyle = '#0a4d22';
       ctx.lineWidth   = 0.5;
       ctx.strokeRect(x, y, B, B);
@@ -649,14 +750,15 @@ export class Player {
     }
   }
 
-  private _buildShipBlocks(): Array<{ col: number; row: number; color: string }> {
-    const blocks: Array<{ col: number; row: number; color: string }> = [];
+  private _buildShipBlocks(): Array<{ col: number; row: number; color: string; hpRatio: number }> {
+    const blocks: Array<{ col: number; row: number; color: string; hpRatio: number }> = [];
     for (const module of this.playerModules) {
       if (!module.alive || !module.isConnected) continue;
       blocks.push({
         col: module.col,
         row: module.row,
         color: this._moduleColor(module.type, module.col, module.row),
+        hpRatio: module.maxHp > 0 ? module.hp / module.maxHp : 1,
       });
     }
     return blocks;

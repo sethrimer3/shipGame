@@ -49,6 +49,7 @@ export interface Particle {
   lifetime: number;
   maxLife:  number;
   alpha:    number;
+  shape?:   'circle' | 'square';
 }
 
 export function updateParticle(p: Particle, dt: number): void {
@@ -63,10 +64,15 @@ export function updateParticle(p: Particle, dt: number): void {
 
 export function drawParticle(ctx: CanvasRenderingContext2D, p: Particle): void {
   ctx.globalAlpha = p.alpha;
-  ctx.beginPath();
-  ctx.arc(p.pos.x, p.pos.y, p.radius, 0, Math.PI * 2);
   ctx.fillStyle = p.color;
-  ctx.fill();
+  if (p.shape === 'square') {
+    const s = p.radius * 2;
+    ctx.fillRect(p.pos.x - p.radius, p.pos.y - p.radius, s, s);
+  } else {
+    ctx.beginPath();
+    ctx.arc(p.pos.x, p.pos.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.globalAlpha = 1;
 }
 

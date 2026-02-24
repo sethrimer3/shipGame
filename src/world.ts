@@ -526,7 +526,7 @@ export class World {
         if (!proj.alive || proj.owner !== 'enemy') continue;
         if (dist(proj.pos, player.pos) < player.radius + proj.radius) {
           proj.alive = false;
-          player.damage(proj.damage);
+          player.damageModule(proj.pos, proj.damage, particles);
           floatingTexts.push(makeFloatingText(
             { x: player.pos.x + (Math.random() - 0.5) * 24, y: player.pos.y - player.radius - 8 },
             `-${proj.damage}`,
@@ -646,7 +646,7 @@ export class World {
       for (const ic of chunk.interceptors) {
         if (!ic.alive) continue;
         if (dist(ic.pos, player.pos) < ic.radius + player.radius) {
-          player.damage(ic.ramDamage);
+          player.damageModule(ic.pos, ic.ramDamage, particles);
           ic.alive = false;
           particles.push(...Array.from({ length: 14 }, () => {
             const ang = Math.random() * Math.PI * 2;

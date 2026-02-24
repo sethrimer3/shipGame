@@ -148,6 +148,9 @@ export class Interceptor {
   private readonly _ramDamage: number;
   private readonly _color:     string;
   private readonly _xpValue:   number;
+  private readonly _engageDistanceWorld: number;
+  private readonly _disengageDistanceWorld: number;
+  private _isTargetingPlayer = false;
 
   constructor(
     public pos: Vec2,
@@ -159,17 +162,27 @@ export class Interceptor {
     this._ramDamage = [18, 28, 44][tier];
     this._color     = ['#ff4444', '#ff6622', '#ff2200'][tier];
     this._xpValue   = [8, 16, 28][tier];
+    this._engageDistanceWorld    = [320, 380, 460][tier];
+    this._disengageDistanceWorld = this._engageDistanceWorld * 1.35;
   }
 
   get xpValue():   number { return this._xpValue;  }
   get ramDamage(): number { return this._ramDamage; }
+  get maxSpeed():  number { return this._speed; }
+  get isTargetingPlayer(): boolean { return this._isTargetingPlayer; }
 
   update(dt: number, player: Player, particles: Particle[]): void {
     const dx = player.pos.x - this.pos.x;
     const dy = player.pos.y - this.pos.y;
     const d  = Math.sqrt(dx * dx + dy * dy);
 
-    if (d > 0.1) {
+    if (this._isTargetingPlayer) {
+      if (d > this._disengageDistanceWorld) this._isTargetingPlayer = false;
+    } else if (d <= this._engageDistanceWorld) {
+      this._isTargetingPlayer = true;
+    }
+
+    if (this._isTargetingPlayer && d > 0.1) {
       this.angle = Math.atan2(dy, dx);
       const nx   = dx / d;
       const ny   = dy / d;
@@ -187,6 +200,10 @@ export class Interceptor {
     const drag = Math.pow(0.92, dt * 60);
     this.vel.x *= drag;
     this.vel.y *= drag;
+    if (!this._isTargetingPlayer) {
+      const spd = Math.sqrt(this.vel.x * this.vel.x + this.vel.y * this.vel.y);
+      if (spd > 4) this.angle = Math.atan2(this.vel.y, this.vel.x);
+    }
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
 

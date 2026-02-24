@@ -74,6 +74,19 @@ function segmentIntersectsRect(
   return true;
 }
 
+function segmentCircleClosestT(
+  x1: number, y1: number,
+  x2: number, y2: number,
+  cx: number, cy: number,
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq <= 1e-8) return 0;
+  const t = ((cx - x1) * dx + (cy - y1) * dy) / lenSq;
+  return Math.max(0, Math.min(1, t));
+}
+
 /**
  * Resolve a ship vs asteroid circle collision using impulse physics.
  * Mutates ship pos/vel and asteroid pos/vel in place.
@@ -692,16 +705,38 @@ export class World {
       }
       chunk.turrets = chunk.turrets.filter(t => t.alive);
 
-      // ── Interceptor AI update ─────────────────────────────────────
+      // ── Interceptor AI update + asteroid collisions ──────────────
       for (const ic of chunk.interceptors) {
         if (!ic.alive) continue;
+        const prevX = ic.pos.x;
+        const prevY = ic.pos.y;
         ic.update(dt, player, particles);
-      }
-
-      // ── Interceptor-asteroid collisions ──────────────────────────
-      for (const ic of chunk.interceptors) {
-        if (!ic.alive) continue;
         for (const asteroid of chunk.asteroids) {
+          // Swept check to prevent tunnelling through asteroids at high speed.
+          const dx = ic.pos.x - prevX;
+          const dy = ic.pos.y - prevY;
+          const movedDistSq = dx * dx + dy * dy;
+          if (movedDistSq > 1e-6) {
+            const tClosest = segmentCircleClosestT(
+              prevX, prevY,
+              ic.pos.x, ic.pos.y,
+              asteroid.centre.x, asteroid.centre.y,
+            );
+            const nearX = prevX + dx * tClosest;
+            const nearY = prevY + dy * tClosest;
+            const rad = ic.radius + asteroid.radius;
+            const ox = nearX - asteroid.centre.x;
+            const oy = nearY - asteroid.centre.y;
+            if (ox * ox + oy * oy <= rad * rad) {
+              const rewindDistance = Math.min(Math.sqrt(movedDistSq), ic.maxSpeed * dt);
+              const moveLen = Math.sqrt(movedDistSq);
+              if (moveLen > 1e-6) {
+                const invMove = 1 / moveLen;
+                ic.pos.x = nearX - dx * invMove * rewindDistance * 0.1;
+                ic.pos.y = nearY - dy * invMove * rewindDistance * 0.1;
+              }
+            }
+          }
           resolveShipAsteroidCollision(ic.pos, ic.vel, ic.radius, ic.mass, asteroid);
         }
       }
@@ -866,8 +901,15 @@ export class World {
     this.floatingModules = this.floatingModules.filter(fm => fm.hp > 0);
   }
 
-  draw(ctx: CanvasRenderingContext2D, camPos: Vec2): void {
+  draw(ctx: CanvasRenderingContext2D, camPos: Vec2, viewportWidthPx: number, viewportHeightPx: number): void {
     const chunks = this._activeChunks(camPos);
+    const halfW = viewportWidthPx * 0.5;
+    const halfH = viewportHeightPx * 0.5;
+    const cullMargin = 60;
+    const minX = camPos.x - halfW - cullMargin;
+    const maxX = camPos.x + halfW + cullMargin;
+    const minY = camPos.y - halfH - cullMargin;
+    const maxY = camPos.y + halfH + cullMargin;
 
     // ── Asteroids ──────────────────────────────────────────────────
     for (const chunk of chunks) {
@@ -922,7 +964,14 @@ export class World {
     // ── Interceptors ───────────────────────────────────────────────
     for (const chunk of chunks) {
       for (const ic of chunk.interceptors) {
-        if (ic.alive) ic.draw(ctx);
+        if (!ic.alive) continue;
+        const isVisible =
+          ic.pos.x + ic.radius >= minX &&
+          ic.pos.x - ic.radius <= maxX &&
+          ic.pos.y + ic.radius >= minY &&
+          ic.pos.y - ic.radius <= maxY;
+        if (!isVisible && !ic.isTargetingPlayer) continue;
+        ic.draw(ctx);
       }
     }
 

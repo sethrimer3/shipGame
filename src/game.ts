@@ -95,7 +95,7 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 ];
 
 
-const BUILD_NUMBER = 4;
+const BUILD_NUMBER = 5;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -711,7 +711,7 @@ class Game {
     // Sun at world origin
     this.sunRenderer.draw(ctx, { x: 0, y: 0 }, 150, this.gameTime);
 
-    this.world.draw(ctx, this.camera.position);
+    this.world.draw(ctx, this.camera.position, canvas.width, canvas.height);
 
     for (const beam of this._placementBeams) {
       const ratio = Math.max(0, beam.life / beam.maxLife);

@@ -1,6 +1,6 @@
 import { InputManager }  from './input';
 import { Camera }        from './camera';
-import { Player, ModuleInfo, tierToRoman }        from './player';
+import { Player, ModuleInfo, tierToRoman, RECYCLE_REFUND_RATE }        from './player';
 import { World }         from './world';
 import { Toolbar }       from './toolbar';
 import { CraftingSystem } from './crafting';
@@ -106,6 +106,8 @@ const MODULE_TOOLTIP_DESCS: Record<ShipModuleType, string> = {
 const MODULE_CORE_DESC = 'Ship core. Nanobots: heals nearest modules at 10 HP/s outward.';
 const TOOLTIP_CURSOR_OFFSET = 14; // pixels from cursor to tooltip edge
 const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
+/** Seconds within which a second U press counts as a double-press for module upgrade. */
+const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
 const BUILD_NUMBER = 13;
 
@@ -362,7 +364,7 @@ class Game {
     if (this._shipEditorOpen && this.input.isDown('u') && !this._upgradeKeyHeld) {
       this._upgradeKeyHeld = true;
       this._upgradeKeyCount++;
-      this._upgradeKeyTimer = 0.8;
+      this._upgradeKeyTimer = UPGRADE_KEY_DOUBLE_PRESS_WINDOW;
       if (this._upgradeKeyCount >= 2 && this._hoveredPaletteType) {
         this._executeUpgradeForType(this._hoveredPaletteType);
         this._upgradeKeyCount = 0;
@@ -928,7 +930,7 @@ class Game {
       let yieldText = '';
       if (recipe && recipe.inputs.length > 0) {
         const parts = recipe.inputs
-          .map(i => ({ mat: i.material, qty: Math.floor(i.quantity * 0.25) }))
+          .map(i => ({ mat: i.material, qty: Math.floor(i.quantity * RECYCLE_REFUND_RATE) }))
           .filter(p => p.qty > 0)
           .map(p => `${p.qty}× ${p.mat}`);
         yieldText = parts.length > 0 ? ` → ${parts.join(', ')}` : ' → nothing';

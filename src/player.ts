@@ -66,6 +66,8 @@ export function tierToRoman(tier: number): string {
 const CORE_HP_BASE = 30; // Core module HP – last line of defence before ship destruction
 const NANOBOT_REPAIR_RATE = 10; // HP per second healed by core nanobots
 const NANOBOT_REPAIR_EPSILON = 1e-6; // Floating-point threshold for nanobot repair loop
+/** Fraction of crafting recipe inputs refunded when recycling a module (25%, rounded down). */
+export const RECYCLE_REFUND_RATE = 0.25;
 const MODULE_HP_BY_TYPE: Record<ShipModuleType, number> = {
   hull: 34,
   engine: 24,
@@ -359,7 +361,7 @@ export class Player {
     const refund: ResourceStack[] = [];
     if (recipe) {
       for (const input of recipe.inputs) {
-        const qty = Math.floor(input.quantity * 0.25);
+        const qty = Math.floor(input.quantity * RECYCLE_REFUND_RATE);
         if (qty > 0) {
           refund.push({ material: input.material, quantity: qty });
           this.addResource(input.material, qty);

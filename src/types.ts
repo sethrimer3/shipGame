@@ -162,6 +162,8 @@ export interface ShipModules {
 /**
  * Gems used to upgrade modules, indexed by (targetTier - 2).
  * Ruby → T2, Sunstone → T3, Citrine → T4, Emerald → T5, etc.
+ * The array length determines the maximum achievable tier:
+ * max tier = UPGRADE_TIER_GEMS.length + 1 (currently 10).
  */
 export const UPGRADE_TIER_GEMS: Material[] = [
   Material.Ruby,      // T2

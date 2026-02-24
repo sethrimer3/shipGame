@@ -41,15 +41,21 @@
       </div>
 
       <div id="ship-editor-panel" class="hidden">
-        <h2>Ship Editor</h2>
-        <div class="editor-subtitle">Drag module blocks from the palette onto the grid, then confirm.</div>
-        <div id="ship-editor-stats"></div>
-        <div id="ship-editor-grid"></div>
-        <h3 class="editor-section-title">Palette</h3>
-        <div id="ship-editor-palette"></div>
-        <div class="editor-actions">
-          <button id="confirm-ship-editor">Confirm Layout</button>
-          <button id="close-ship-editor">Close [B]</button>
+        <h2>Ship Builder</h2>
+        <div class="editor-subtitle">Drag module blocks onto the grid. Front faces up.</div>
+        <div class="editor-layout">
+          <div class="editor-palette-window">
+            <h3 class="editor-section-title">Module Palette</h3>
+            <div id="ship-editor-palette"></div>
+          </div>
+          <div class="editor-grid-window">
+            <div id="ship-editor-stats"></div>
+            <div id="ship-editor-grid"></div>
+            <div class="editor-actions">
+              <button id="confirm-ship-editor">Confirm Layout</button>
+              <button id="close-ship-editor">Close [C]</button>
+            </div>
+          </div>
         </div>
       </div>
       <div id="settings-panel" class="hidden">
@@ -68,7 +74,7 @@
       </div>
       <div id="toolbar-container">
         <div id="toolbar"></div>
-        <div id="toolbar-hint">Scroll or 1–8 to select &nbsp;|&nbsp; C: Crafting &nbsp;|&nbsp; B: Ship Editor &nbsp;|&nbsp; ESC: Pause &nbsp;|&nbsp; Tab: Settings &nbsp;|&nbsp; Left-click: Fire &nbsp;|&nbsp; Right-click: Place Block</div>
+        <div id="toolbar-hint">Scroll or 1–8 to select &nbsp;|&nbsp; C: Ship Builder &nbsp;|&nbsp; ESC: Pause &nbsp;|&nbsp; Tab: Settings &nbsp;|&nbsp; Left-click: Fire &nbsp;|&nbsp; Right-click: Place Block</div>
       </div>
     </div>
   </div>

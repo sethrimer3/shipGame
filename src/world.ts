@@ -24,6 +24,56 @@ function circleVsRect(
   return dx * dx + dy * dy <= r * r;
 }
 
+
+function segmentIntersectsRect(
+  x1: number, y1: number,
+  x2: number, y2: number,
+  rx: number, ry: number, rw: number, rh: number,
+): boolean {
+  const left = rx;
+  const right = rx + rw;
+  const top = ry;
+  const bottom = ry + rh;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let tMin = 0;
+  let tMax = 1;
+
+  if (Math.abs(dx) < 1e-8) {
+    if (x1 < left || x1 > right) return false;
+  } else {
+    const invDx = 1 / dx;
+    let t1 = (left - x1) * invDx;
+    let t2 = (right - x1) * invDx;
+    if (t1 > t2) {
+      const temp = t1;
+      t1 = t2;
+      t2 = temp;
+    }
+    tMin = Math.max(tMin, t1);
+    tMax = Math.min(tMax, t2);
+    if (tMin > tMax) return false;
+  }
+
+  if (Math.abs(dy) < 1e-8) {
+    if (y1 < top || y1 > bottom) return false;
+  } else {
+    const invDy = 1 / dy;
+    let t1 = (top - y1) * invDy;
+    let t2 = (bottom - y1) * invDy;
+    if (t1 > t2) {
+      const temp = t1;
+      t1 = t2;
+      t2 = temp;
+    }
+    tMin = Math.max(tMin, t1);
+    tMax = Math.min(tMax, t2);
+    if (tMin > tMax) return false;
+  }
+
+  return true;
+}
+
 /**
  * Resolve a ship vs asteroid circle collision using impulse physics.
  * Mutates ship pos/vel and asteroid pos/vel in place.
@@ -409,12 +459,19 @@ export class World {
           if (!proj.alive) continue;
           const lx = proj.pos.x - asteroid.pos.x;
           const ly = proj.pos.y - asteroid.pos.y;
+          const prevLx = proj.prevPos.x - asteroid.pos.x;
+          const prevLy = proj.prevPos.y - asteroid.pos.y;
           let block = asteroid.blockAt(proj.pos);
           if (!block) {
-            // Radius-aware fallback: find first block whose rect the projectile circle overlaps
             for (const b of asteroid.blocks) {
               if (!b.alive) continue;
-              if (circleVsRect(lx, ly, proj.radius, b.col * BLOCK_SIZE, b.row * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)) {
+              const blockX = b.col * BLOCK_SIZE;
+              const blockY = b.row * BLOCK_SIZE;
+              if (
+                circleVsRect(lx, ly, proj.radius, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
+                || circleVsRect(prevLx, prevLy, proj.radius, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
+                || segmentIntersectsRect(prevLx, prevLy, lx, ly, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
+              ) {
                 block = b;
                 break;
               }

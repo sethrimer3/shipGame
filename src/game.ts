@@ -1,6 +1,6 @@
 import { InputManager }  from './input';
 import { Camera }        from './camera';
-import { Player, ShipModuleType, ShipModules }        from './player';
+import { Player, ShipModuleType, ShipModules, ModuleInfo }        from './player';
 import { World }         from './world';
 import { Toolbar }       from './toolbar';
 import { CraftingSystem } from './crafting';
@@ -95,7 +95,19 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 ];
 
 
-const BUILD_NUMBER = 11;
+const MODULE_TOOLTIP_DESCS: Record<ShipModuleType, string> = {
+  hull:        'Structure: raises max HP by 34.',
+  engine:      'Boosts acceleration (+14%) and top speed (+12%).',
+  shield:      'Increases max shield (+20) and regen (+1.8/s).',
+  coolant:     'Reduces overheat drain; speeds heat recovery (+30%).',
+  weapon:      'Boosts weapon damage (+8%) and fire rate (+6%).',
+  miningLaser: 'Adds a forward-facing mining laser beam.',
+};
+const MODULE_CORE_DESC = 'Ship core. Nanobots: heals nearest modules at 10 HP/s outward.';
+const TOOLTIP_CURSOR_OFFSET = 14; // pixels from cursor to tooltip edge
+const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
+
+const BUILD_NUMBER = 12;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -937,6 +949,13 @@ class Game {
     // ── Off-screen enemy indicators ────────────────────────────────
     if (this.player.alive) this._drawEnemyIndicators(ctx);
 
+    // ── Module hover tooltip ────────────────────────────────────────
+    if (this.player.alive && !this._paused && !this._shipEditorOpen && !this._settingsOpen) {
+      const mw = this.camera.screenToWorld(this.input.mousePos);
+      const info = this.player.getModuleInfoAtWorldPos(mw);
+      if (info) this._drawModuleTooltip(ctx, info, this.input.mousePos);
+    }
+
     // ── Speed indicator ────────────────────────────────────────────
     if (this.player.alive) {
       const spd = Math.round(len(this.player.vel));
@@ -1162,6 +1181,83 @@ class Game {
       ctx.closePath();
       ctx.fill();
       ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // ── Module hover tooltip ────────────────────────────────────────────────────
+  private _drawModuleTooltip(ctx: CanvasRenderingContext2D, info: ModuleInfo, mouseScreen: { x: number; y: number }): void {
+    const config = MODULE_EDITOR_CONFIG.find(c => c.type === info.type);
+    const color  = config?.color ?? '#ffffff';
+    const name   = info.isCore ? 'Core Module' : (config?.name ?? info.type);
+    const desc   = info.isCore ? MODULE_CORE_DESC : (MODULE_TOOLTIP_DESCS[info.type] ?? '');
+    const hpText = `HP: ${Math.ceil(info.hp)} / ${info.maxHp}`;
+
+    const FONT_SMALL  = '11px Courier New';
+    const FONT_HEADER = 'bold 12px Courier New';
+    const PAD   = 8;
+    const LINE  = 15;
+    const MAX_W = 210;
+
+    ctx.save();
+    ctx.font = FONT_HEADER;
+    const nameW = ctx.measureText(name).width;
+    ctx.font = FONT_SMALL;
+    // Wrap desc into lines
+    const words = desc.split(' ');
+    const lines: string[] = [];
+    let cur = '';
+    for (const w of words) {
+      const test = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(test).width > MAX_W - PAD * 2) {
+        if (cur) lines.push(cur);
+        cur = w;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) lines.push(cur);
+
+    const totalLines = 1 + 1 + lines.length; // name + hp + desc lines
+    const boxW = Math.min(MAX_W, Math.max(nameW + PAD * 2, MIN_TOOLTIP_WIDTH));
+    const boxH = totalLines * LINE + PAD * 2;
+
+    let tx = mouseScreen.x + TOOLTIP_CURSOR_OFFSET;
+    let ty = mouseScreen.y - boxH / 2;
+    if (tx + boxW > this.canvas.width - 8) tx = mouseScreen.x - TOOLTIP_CURSOR_OFFSET - boxW;
+    if (ty < 8) ty = 8;
+    if (ty + boxH > this.canvas.height - 8) ty = this.canvas.height - 8 - boxH;
+
+    // Background
+    ctx.fillStyle   = 'rgba(6, 12, 24, 0.92)';
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.5;
+    ctx.fillRect(tx, ty, boxW, boxH);
+    ctx.strokeRect(tx, ty, boxW, boxH);
+
+    let lineY = ty + PAD + LINE - 3;
+
+    // Module name
+    ctx.font      = FONT_HEADER;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.fillText(name, tx + PAD, lineY);
+    lineY += LINE;
+
+    // HP
+    const hpRatio = info.maxHp > 0 ? info.hp / info.maxHp : 1;
+    const hpColor = hpRatio > 0.5 ? '#2ecc71' : hpRatio > 0.25 ? '#f39c12' : '#e74c3c';
+    ctx.font      = FONT_SMALL;
+    ctx.fillStyle = hpColor;
+    ctx.fillText(hpText, tx + PAD, lineY);
+    lineY += LINE;
+
+    // Description lines
+    ctx.fillStyle = 'rgba(200, 220, 255, 0.8)';
+    for (const line of lines) {
+      ctx.fillText(line, tx + PAD, lineY);
+      lineY += LINE;
     }
 
     ctx.restore();

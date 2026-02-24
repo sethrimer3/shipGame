@@ -95,7 +95,7 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 ];
 
 
-const BUILD_NUMBER = 3;
+const BUILD_NUMBER = 4;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;

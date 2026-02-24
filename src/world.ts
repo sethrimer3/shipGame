@@ -698,6 +698,14 @@ export class World {
         ic.update(dt, player, particles);
       }
 
+      // ── Interceptor-asteroid collisions ──────────────────────────
+      for (const ic of chunk.interceptors) {
+        if (!ic.alive) continue;
+        for (const asteroid of chunk.asteroids) {
+          resolveShipAsteroidCollision(ic.pos, ic.vel, ic.radius, ic.mass, asteroid);
+        }
+      }
+
       // ── Interceptor ram collision (contact with player) ───────────
       for (const ic of chunk.interceptors) {
         if (!ic.alive) continue;

@@ -95,7 +95,7 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 ];
 
 
-const BUILD_NUMBER = 1;
+const BUILD_NUMBER = 2;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -134,7 +134,8 @@ class Game {
   private readonly _placementBeams: PlacementBeamEffect[] = [];
   private readonly _launchEffects: BlockLaunchEffect[] = [];
 
-  private _pendingShipModules: ShipModules | null = null;
+  /** Explicit per-cell layout being edited.  Each entry is in editor grid coords (row, col 0-10). */
+  private _pendingModuleSlots: Array<{ row: number; col: number; type: ShipModuleType }> | null = null;
   private _draggingModuleType: ShipModuleType | null = null;
   private _draggingFromCell: { row: number; col: number } | null = null;
 
@@ -412,9 +413,15 @@ class Game {
     const confirmBtn = document.getElementById('confirm-ship-editor');
     if (confirmBtn) {
       confirmBtn.addEventListener('click', () => {
-        if (!this._pendingShipModules) return;
-        this.player.setModules(this._pendingShipModules);
-        this._pendingShipModules = { ...this.player.moduleCounts };
+        if (!this._pendingModuleSlots) return;
+        // Convert editor positions to ship-local positions and apply
+        const shipSlots = this._pendingModuleSlots.map(s => ({
+          type: s.type,
+          col:  s.col - EDITOR_CENTER,
+          row:  s.row - EDITOR_CENTER,
+        }));
+        this.player.setModuleLayout(shipSlots);
+        this._pendingModuleSlots = this._slotsFromPlayer();
         this._refreshShipEditorPanel();
         this.hud.showMessage('Ship layout saved');
       });
@@ -477,8 +484,8 @@ class Game {
 
           cell.addEventListener('dragover', (event) => {
             if (cell.dataset.locked === 'true') return;
-            // When dragging from a grid cell, only allow swapping with another filled cell
-            if (this._draggingFromCell && !cell.dataset.moduleType) return;
+            // Allow dropping on any valid slot position (filled or empty)
+            if (!Game._VALID_SLOT_KEYS.has(`${row},${col}`)) return;
             event.preventDefault();
             cell.classList.add('drop-target');
           });
@@ -513,15 +520,39 @@ class Game {
       else panel.classList.add('hidden');
     }
     if (visible) {
-      this._pendingShipModules = { ...this.player.moduleCounts };
+      this._pendingModuleSlots = this._slotsFromPlayer();
       this._refreshShipEditorPanel();
     }
   }
 
-  private _refreshShipEditorPanel(): void {
-    if (!this._pendingShipModules) this._pendingShipModules = { ...this.player.moduleCounts };
+  /** Build a Set of "row,col" strings for quick lookup of valid slot positions. */
+  private static readonly _VALID_SLOT_KEYS: Set<string> = new Set(
+    EDITOR_SLOT_ORDER.map(s => `${s.row},${s.col}`),
+  );
 
-    const counts = this._pendingShipModules;
+  /** Convert the player's current module layout into editor-grid slot entries. */
+  private _slotsFromPlayer(): Array<{ row: number; col: number; type: ShipModuleType }> {
+    return this.player.getModuleSlots().map(s => ({
+      row:  s.row + EDITOR_CENTER,
+      col:  s.col + EDITOR_CENTER,
+      type: s.type,
+    }));
+  }
+
+  /** Derive ShipModules counts from the pending slot array. */
+  private _countsFromSlots(
+    slots: Array<{ row: number; col: number; type: ShipModuleType }>,
+  ): ShipModules {
+    const out: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0, miningLaser: 0 };
+    for (const s of slots) out[s.type] += 1;
+    if (out.hull < 1) out.hull = 1;
+    return out;
+  }
+
+  private _refreshShipEditorPanel(): void {
+    if (!this._pendingModuleSlots) this._pendingModuleSlots = this._slotsFromPlayer();
+
+    const counts = this._countsFromSlots(this._pendingModuleSlots);
     for (const mod of MODULE_EDITOR_CONFIG) {
       const countEl = document.getElementById(`module-count-${mod.type}`);
       if (countEl) countEl.textContent = String(counts[mod.type]);
@@ -561,32 +592,43 @@ class Game {
   }
 
   private _setPendingModuleAtCell(row: number, col: number, moduleType: ShipModuleType): void {
-    if (!this._pendingShipModules) this._pendingShipModules = { ...this.player.moduleCounts };
-    const slots = this._gridSlotsForModules(this._pendingShipModules);
-    const next = slots.find(slot => slot.row === row && slot.col === col);
-    if (!next) return;
-    next.type = moduleType;
-    this._pendingShipModules = this._modulesFromGridSlots(slots);
+    if (!this._pendingModuleSlots) this._pendingModuleSlots = this._slotsFromPlayer();
+    const existing = this._pendingModuleSlots.find(s => s.row === row && s.col === col);
+    if (existing) {
+      existing.type = moduleType;
+    } else if (Game._VALID_SLOT_KEYS.has(`${row},${col}`)) {
+      this._pendingModuleSlots.push({ row, col, type: moduleType });
+    } else {
+      return;
+    }
     this._refreshShipEditorPanel();
   }
 
   private _swapPendingModuleCells(fromRow: number, fromCol: number, toRow: number, toCol: number): void {
-    if (!this._pendingShipModules) return;
-    const slots = this._gridSlotsForModules(this._pendingShipModules);
-    const fromSlot = slots.find(s => s.row === fromRow && s.col === fromCol);
-    const toSlot   = slots.find(s => s.row === toRow   && s.col === toCol);
-    if (!fromSlot || !toSlot) return;
-    const tmp      = fromSlot.type;
-    fromSlot.type  = toSlot.type;
-    toSlot.type    = tmp;
-    this._pendingShipModules = this._modulesFromGridSlots(slots);
+    if (!this._pendingModuleSlots) return;
+    const fromSlot = this._pendingModuleSlots.find(s => s.row === fromRow && s.col === fromCol);
+    if (!fromSlot) return;
+
+    const toSlot = this._pendingModuleSlots.find(s => s.row === toRow && s.col === toCol);
+    if (toSlot) {
+      // Swap the two filled cells
+      const tmp    = fromSlot.type;
+      fromSlot.type = toSlot.type;
+      toSlot.type   = tmp;
+    } else if (Game._VALID_SLOT_KEYS.has(`${toRow},${toCol}`)) {
+      // Move to an empty valid slot: update fromSlot position in-place
+      fromSlot.row = toRow;
+      fromSlot.col = toCol;
+    } else {
+      return;
+    }
     this._refreshShipEditorPanel();
   }
 
   private _renderPendingShipGrid(): void {
-    if (!this._pendingShipModules) return;
+    if (!this._pendingModuleSlots) return;
     const slotByPos = new Map<string, ShipModuleType>();
-    for (const slot of this._gridSlotsForModules(this._pendingShipModules)) {
+    for (const slot of this._pendingModuleSlots) {
       slotByPos.set(`${slot.row},${slot.col}`, slot.type);
     }
 
@@ -612,27 +654,6 @@ class Game {
       htmlCell.draggable = true;
       htmlCell.dataset.moduleType = moduleType;
     }
-  }
-
-  private _gridSlotsForModules(modules: ShipModules): Array<{ row: number; col: number; type: ShipModuleType }> {
-    const types: ShipModuleType[] = [];
-    for (const type of ['hull', 'engine', 'shield', 'coolant', 'weapon', 'miningLaser'] as ShipModuleType[]) {
-      for (let i = 0; i < modules[type]; i++) types.push(type);
-    }
-
-    const limit = Math.min(types.length, EDITOR_SLOT_ORDER.length);
-    const slots: Array<{ row: number; col: number; type: ShipModuleType }> = [];
-    for (let i = 0; i < limit; i++) {
-      slots.push({ row: EDITOR_SLOT_ORDER[i].row, col: EDITOR_SLOT_ORDER[i].col, type: types[i] });
-    }
-    return slots;
-  }
-
-  private _modulesFromGridSlots(slots: Array<{ row: number; col: number; type: ShipModuleType }>): ShipModules {
-    const out: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0, miningLaser: 0 };
-    for (const slot of slots) out[slot.type] += 1;
-    if (out.hull < 1) out.hull = 1;
-    return out;
   }
 
   private _lineGridPath(from: Vec2, to: Vec2): Vec2[] {

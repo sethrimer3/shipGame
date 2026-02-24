@@ -30,6 +30,17 @@ export interface ShipModules {
 }
 
 const CORE_HP_BASE = 30; // Core module HP – last line of defence before ship destruction
+
+/** Ship-local [col, row] positions for each module type, ordered by placement priority. */
+const HULL_MODULE_SLOTS: ReadonlyArray<[number, number]> = [
+  [0, 0], [1, 0], [0, -1], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, -1], [-1, 1],
+  [2, 0], [-2, 0], [0, -2], [0, 2], [2, -1], [2, 1], [-2, -1], [-2, 1],
+  [1, -2], [1, 2], [-1, -2], [-1, 2], [3, 0], [-3, 0],
+];
+const ENGINE_MODULE_SLOTS:  ReadonlyArray<[number, number]> = [[-3, -1], [-3, 1], [-4, 0], [-4, -1], [-4, 1]];
+const SHIELD_MODULE_SLOTS:  ReadonlyArray<[number, number]> = [[0, -3], [0, 3], [1, -3], [1, 3], [-1, -3], [-1, 3]];
+const COOLANT_MODULE_SLOTS: ReadonlyArray<[number, number]> = [[-2, -2], [-2, 2], [-3, -2], [-3, 2]];
+const WEAPON_MODULE_SLOTS:  ReadonlyArray<[number, number]> = [[2, -3], [2, 3], [3, -1], [3, 1]];
 /** Ship-local [col, row] positions of mining laser modules, ordered by priority. */
 const MINING_LASER_MODULE_SLOTS: ReadonlyArray<[number, number]> = [
   [4, 0], [4, -1], [4, 1], [5, 0],
@@ -86,6 +97,13 @@ export class Player {
     weapon: 0,
     miningLaser: 1,
   };
+  /**
+   * Explicit per-slot layout set from the ship editor.  Each entry is in
+   * ship-local coordinates (col = right/nose, row = down).  When non-null
+   * this overrides the count-based slot assignment in _buildShipBlocks and
+   * getMiningLaserWorldPositions.
+   */
+  private _moduleSlots: Array<{ type: ShipModuleType; col: number; row: number }> | null = null;
 
   constructor(
     private readonly input:    InputManager,
@@ -143,18 +161,17 @@ export class Player {
     const B = 7;
     const cosA = Math.cos(this.angle);
     const sinA = Math.sin(this.angle);
-    const count = Math.min(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS.length);
-    const positions: Vec2[] = [];
-    for (let i = 0; i < count; i++) {
-      const [col, row] = MINING_LASER_MODULE_SLOTS[i];
+    const slots = this._moduleSlots
+      ? this._moduleSlots.filter(s => s.type === 'miningLaser')
+      : MINING_LASER_MODULE_SLOTS.slice(0, this.modules.miningLaser).map(([col, row]) => ({ col, row }));
+    return slots.map(({ col, row }) => {
       const lx = col * B;
       const ly = row * B;
-      positions.push({
+      return {
         x: this.pos.x + lx * cosA - ly * sinA,
         y: this.pos.y + lx * sinA + ly * cosA,
-      });
-    }
-    return positions;
+      };
+    });
   }
 
   /** XP required to reach the next level. */
@@ -191,6 +208,41 @@ export class Player {
       miningLaser: Math.max(0, Math.floor(next.miningLaser)),
     };
     this._recalculateShipStats();
+  }
+
+  /**
+   * Apply a positional module layout from the ship editor.  `slots` uses
+   * ship-local coordinates (col = nose direction, row = starboard direction).
+   * The module counts are derived automatically from the slot types.
+   */
+  setModuleLayout(slots: Array<{ type: ShipModuleType; col: number; row: number }>): void {
+    this._moduleSlots = slots.length > 0 ? [...slots] : null;
+    const counts: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0, miningLaser: 0 };
+    for (const s of slots) counts[s.type] += 1;
+    this.setModules(counts);
+  }
+
+  /**
+   * Returns the current module layout as ship-local slot positions.
+   * If no custom layout is stored, returns the default count-based layout
+   * using the provided ordered slot lists (same order as EDITOR_SLOT_ORDER).
+   */
+  getModuleSlots(): Array<{ type: ShipModuleType; col: number; row: number }> {
+    if (this._moduleSlots) return [...this._moduleSlots];
+    // Build the default layout using the same slot order as _buildShipBlocks
+    const result: Array<{ type: ShipModuleType; col: number; row: number }> = [];
+    const add = (count: number, slots: ReadonlyArray<[number, number]>, type: ShipModuleType) => {
+      for (let i = 0; i < Math.min(count, slots.length); i++) {
+        result.push({ type, col: slots[i][0], row: slots[i][1] });
+      }
+    };
+    add(this.modules.hull,        HULL_MODULE_SLOTS,         'hull');
+    add(this.modules.engine,      ENGINE_MODULE_SLOTS,       'engine');
+    add(this.modules.shield,      SHIELD_MODULE_SLOTS,       'shield');
+    add(this.modules.coolant,     COOLANT_MODULE_SLOTS,      'coolant');
+    add(this.modules.weapon,      WEAPON_MODULE_SLOTS,       'weapon');
+    add(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS, 'miningLaser');
+    return result;
   }
 
   removeModule(type: ShipModuleType): boolean {
@@ -484,32 +536,45 @@ export class Player {
   }
 
   private _buildShipBlocks(): Array<{ col: number; row: number; color: string }> {
-    const hullSlots: Array<[number, number]> = [
-      [0, 0], [1, 0], [0, -1], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, -1], [-1, 1],
-      [2, 0], [-2, 0], [0, -2], [0, 2], [2, -1], [2, 1], [-2, -1], [-2, 1],
-      [1, -2], [1, 2], [-1, -2], [-1, 2], [3, 0], [-3, 0],
-    ];
+    if (this._moduleSlots) {
+      return this._moduleSlots.map(s => ({ col: s.col, row: s.row, color: this._moduleColor(s.type, s.col, s.row) }));
+    }
+
     const blocks: Array<{ col: number; row: number; color: string }> = [];
-    const hullCount = Math.min(this.modules.hull, hullSlots.length);
+    const hullCount = Math.min(this.modules.hull, HULL_MODULE_SLOTS.length);
     for (let i = 0; i < hullCount; i++) {
-      const [col, row] = hullSlots[i];
+      const [col, row] = HULL_MODULE_SLOTS[i];
       // Center block [0,0] is the CORE – highlight it with a distinct gold color
       const color = (i === 0) ? '#f1c40f' : (col >= 2 ? '#5df093' : col >= 0 ? '#2ecc71' : '#1a9957');
       blocks.push({ col, row, color });
     }
 
-    const addSpecial = (count: number, slots: Array<[number, number]>, color: string) => {
+    const addSpecial = (count: number, slots: ReadonlyArray<[number, number]>, color: string) => {
       for (let i = 0; i < count; i++) {
         const slot = slots[i % slots.length];
         blocks.push({ col: slot[0], row: slot[1], color });
       }
     };
 
-    addSpecial(this.modules.engine,      [[-3, -1], [-3, 1], [-4, 0], [-4, -1], [-4, 1]], '#7fd9ff');
-    addSpecial(this.modules.shield,      [[0, -3], [0, 3], [1, -3], [1, 3], [-1, -3], [-1, 3]], '#9f8cff');
-    addSpecial(this.modules.coolant,     [[-2, -2], [-2, 2], [-3, -2], [-3, 2]], '#7fffd2');
-    addSpecial(this.modules.weapon,      [[2, -3], [2, 3], [3, -1], [3, 1]], '#ff4444');
-    addSpecial(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS as Array<[number, number]>, '#7ed6f3');
+    addSpecial(this.modules.engine,      ENGINE_MODULE_SLOTS,       '#7fd9ff');
+    addSpecial(this.modules.shield,      SHIELD_MODULE_SLOTS,       '#9f8cff');
+    addSpecial(this.modules.coolant,     COOLANT_MODULE_SLOTS,      '#7fffd2');
+    addSpecial(this.modules.weapon,      WEAPON_MODULE_SLOTS,       '#ff4444');
+    addSpecial(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS, '#7ed6f3');
     return blocks;
+  }
+
+  /** Returns the display color for a module type at a given ship-local position. */
+  private _moduleColor(type: ShipModuleType, col: number, row: number): string {
+    switch (type) {
+      case 'hull':
+        if (col === 0 && row === 0) return '#f1c40f'; // CORE
+        return col >= 2 ? '#5df093' : col >= 0 ? '#2ecc71' : '#1a9957';
+      case 'engine':      return '#7fd9ff';
+      case 'shield':      return '#9f8cff';
+      case 'coolant':     return '#7fffd2';
+      case 'weapon':      return '#ff4444';
+      case 'miningLaser': return '#7ed6f3';
+    }
   }
 }

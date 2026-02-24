@@ -29,7 +29,26 @@ export interface ShipModules {
   miningLaser: number;
 }
 
+interface PlayerModule {
+  type: ShipModuleType;
+  col: number;
+  row: number;
+  hp: number;
+  maxHp: number;
+  alive: boolean;
+  isCore: boolean;
+  isConnected: boolean;
+}
+
 const CORE_HP_BASE = 30; // Core module HP – last line of defence before ship destruction
+const MODULE_HP_BY_TYPE: Record<ShipModuleType, number> = {
+  hull: 34,
+  engine: 24,
+  shield: 22,
+  coolant: 20,
+  weapon: 18,
+  miningLaser: 18,
+};
 
 /** Ship-local [col, row] positions for each module type, ordered by placement priority. */
 const HULL_MODULE_SLOTS: ReadonlyArray<[number, number]> = [
@@ -97,6 +116,7 @@ export class Player {
     weapon: 0,
     miningLaser: 1,
   };
+  private playerModules: PlayerModule[] = [];
   /**
    * Explicit per-slot layout set from the ship editor.  Each entry is in
    * ship-local coordinates (col = right/nose, row = down).  When non-null
@@ -115,6 +135,7 @@ export class Player {
     /** Whether Heavy Armor upgrade is active. */
     public hasHeavyArmor       = false,
   ) {
+    this._rebuildPlayerModules();
     this._recalculateShipStats();
   }
 
@@ -161,9 +182,7 @@ export class Player {
     const B = 7;
     const cosA = Math.cos(this.angle);
     const sinA = Math.sin(this.angle);
-    const slots = this._moduleSlots
-      ? this._moduleSlots.filter(s => s.type === 'miningLaser')
-      : MINING_LASER_MODULE_SLOTS.slice(0, this.modules.miningLaser).map(([col, row]) => ({ col, row }));
+    const slots = this.playerModules.filter(m => m.alive && m.isConnected && m.type === 'miningLaser');
     return slots.map(({ col, row }) => {
       const lx = col * B;
       const ly = row * B;
@@ -195,6 +214,7 @@ export class Player {
 
   addModule(type: ShipModuleType): void {
     this.modules[type] += 1;
+    this._rebuildPlayerModules();
     this._recalculateShipStats();
   }
 
@@ -207,6 +227,7 @@ export class Player {
       weapon:      Math.max(0, Math.floor(next.weapon)),
       miningLaser: Math.max(0, Math.floor(next.miningLaser)),
     };
+    this._rebuildPlayerModules();
     this._recalculateShipStats();
   }
 
@@ -249,6 +270,7 @@ export class Player {
     const minForType = type === 'hull' ? 4 : 0;
     if (this.modules[type] <= minForType) return false;
     this.modules[type] -= 1;
+    this._rebuildPlayerModules();
     this._recalculateShipStats();
     return true;
   }
@@ -277,18 +299,76 @@ export class Player {
   }
 
   private _recalculateShipStats(): void {
-    const hpRatio = this.maxHp > 0 ? this.hp / this.maxHp : 1;
     const shieldRatio = this.maxShield > 0 ? this.shield / this.maxShield : 1;
 
-    const hullHp = 40 + this.modules.hull * 18;
-    this.maxHp = hullHp + this.levelHpBonus;
-    if (this.hasHeavyArmor) this.maxHp += 100;
+    const connected = this.playerModules.filter(m => m.alive && m.isConnected);
+    this.modules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0, miningLaser: 0 };
+    this.maxHp = 0;
+    this.hp = 0;
+    this.maxCoreHp = CORE_HP_BASE;
+    this.coreHp = 0;
+    for (const module of connected) {
+      this.modules[module.type] += 1;
+      if (module.isCore) {
+        this.maxCoreHp = module.maxHp;
+        this.coreHp = Math.min(module.hp, module.maxHp);
+      } else {
+        this.maxHp += module.maxHp;
+        this.hp += module.hp;
+      }
+    }
 
     this.maxShield = 10 + this.modules.shield * 20 + this.levelShieldBonus;
     this.shieldRegen = 2 + this.modules.shield * 1.8;
 
-    this.hp = Math.max(1, Math.min(this.maxHp, this.maxHp * hpRatio));
+    if (this.hasHeavyArmor) this.maxShield += 25;
     this.shield = Math.max(0, Math.min(this.maxShield, this.maxShield * shieldRatio));
+  }
+
+  private _rebuildPlayerModules(): void {
+    const slots = this.getModuleSlots();
+    this.playerModules = slots.map(slot => {
+      const isCore = slot.type === 'hull' && slot.col === 0 && slot.row === 0;
+      const maxHp = isCore ? CORE_HP_BASE : MODULE_HP_BY_TYPE[slot.type];
+      return {
+        type: slot.type,
+        col: slot.col,
+        row: slot.row,
+        hp: maxHp,
+        maxHp,
+        alive: true,
+        isCore,
+        isConnected: true,
+      };
+    });
+    this._refreshConnectivity();
+  }
+
+  private _refreshConnectivity(): void {
+    const core = this.playerModules.find(m => m.isCore && m.alive);
+    for (const m of this.playerModules) m.isConnected = false;
+    if (!core) return;
+    core.isConnected = true;
+    const queue: PlayerModule[] = [core];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const module of this.playerModules) {
+        if (!module.alive || module.isConnected) continue;
+        if ((Math.abs(module.col - cur.col) === 1 && module.row === cur.row) ||
+            (Math.abs(module.row - cur.row) === 1 && module.col === cur.col)) {
+          module.isConnected = true;
+          queue.push(module);
+        }
+      }
+    }
+  }
+
+  private _selectDamageTarget(): PlayerModule | null {
+    for (const module of this.playerModules) {
+      if (!module.alive || !module.isConnected || module.isCore) continue;
+      return module;
+    }
+    return this.playerModules.find(m => m.alive && m.isConnected && m.isCore) ?? null;
   }
 
   update(
@@ -328,7 +408,12 @@ export class Player {
       if (this.input.isDown('d')) ax += thrust;
     }
 
-    const accelerating = ax !== 0 || ay !== 0;
+    const canAccelerate = this.modules.engine > 0;
+    if (!canAccelerate) {
+      ax = 0;
+      ay = 0;
+    }
+    const accelerating = canAccelerate && (ax !== 0 || ay !== 0);
 
     // ── Physics ───────────────────────────────────────────────────
     this.vel.x += ax * dt;
@@ -364,7 +449,8 @@ export class Player {
     this.fireCooldown -= dt;
     const weapon = this.equippedItems[selectedSlot];
     const boostedFireRate = boostActive ? BOOST_MULTIPLIER : 1;
-    if (weapon && (weapon.type === 'weapon' || weapon.type === 'tool') &&
+    const hasWeaponModules = this.modules.weapon > 0 || this.modules.miningLaser > 0;
+    if (weapon && hasWeaponModules && (weapon.type === 'weapon' || weapon.type === 'tool') &&
         this.input.mouseDown && this.fireCooldown <= 0) {
       const adjustedRate   = weapon.fireRate * boostedFireRate * this.weaponFireRateMultiplier;
       this.fireCooldown    = 1 / adjustedRate;
@@ -465,21 +551,49 @@ export class Player {
     }
   }
 
-  /** Take damage (shield absorbs first, then hull HP, then core HP). */
+  /** Take damage (shield absorbs first, then module HP; ship dies when core module is destroyed). */
   damage(amount: number): void {
     this.recentDamage += amount;
     this.shieldRegenDelay = SHIELD_REGEN_DELAY;
     this.damageFlashTimer = DAMAGE_FLASH_DURATION;
     let remaining = amount;
     const shieldAbsorb = Math.min(this.shield, remaining);
-    this.shield   -= shieldAbsorb;
-    remaining     -= shieldAbsorb;
-    if (remaining <= 0) return;
-    const hullAbsorb = Math.min(this.hp, remaining);
-    this.hp       = Math.max(0, this.hp - hullAbsorb);
-    remaining     -= hullAbsorb;
-    if (remaining <= 0) return;
-    this.coreHp   = Math.max(0, this.coreHp - remaining);
+    this.shield -= shieldAbsorb;
+    remaining -= shieldAbsorb;
+
+    while (remaining > 0) {
+      const target = this._selectDamageTarget();
+      if (!target) break;
+      const absorbed = Math.min(target.hp, remaining);
+      target.hp -= absorbed;
+      remaining -= absorbed;
+      if (target.hp <= 0) {
+        target.alive = false;
+        target.hp = 0;
+        this._refreshConnectivity();
+      }
+    }
+
+    this._recalculateShipStats();
+  }
+
+
+  heal(amount: number): void {
+    let remaining = amount;
+    for (const module of this.playerModules) {
+      if (!module.alive || !module.isConnected || module.isCore) continue;
+      const needed = module.maxHp - module.hp;
+      if (needed <= 0) continue;
+      const restored = Math.min(needed, remaining);
+      module.hp += restored;
+      remaining -= restored;
+      if (remaining <= 0) break;
+    }
+    if (remaining > 0) {
+      const core = this.playerModules.find(m => m.alive && m.isConnected && m.isCore);
+      if (core) core.hp = Math.min(core.maxHp, core.hp + remaining);
+    }
+    this._recalculateShipStats();
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
@@ -536,31 +650,15 @@ export class Player {
   }
 
   private _buildShipBlocks(): Array<{ col: number; row: number; color: string }> {
-    if (this._moduleSlots) {
-      return this._moduleSlots.map(s => ({ col: s.col, row: s.row, color: this._moduleColor(s.type, s.col, s.row) }));
-    }
-
     const blocks: Array<{ col: number; row: number; color: string }> = [];
-    const hullCount = Math.min(this.modules.hull, HULL_MODULE_SLOTS.length);
-    for (let i = 0; i < hullCount; i++) {
-      const [col, row] = HULL_MODULE_SLOTS[i];
-      // Center block [0,0] is the CORE – highlight it with a distinct gold color
-      const color = (i === 0) ? '#f1c40f' : (col >= 2 ? '#5df093' : col >= 0 ? '#2ecc71' : '#1a9957');
-      blocks.push({ col, row, color });
+    for (const module of this.playerModules) {
+      if (!module.alive || !module.isConnected) continue;
+      blocks.push({
+        col: module.col,
+        row: module.row,
+        color: this._moduleColor(module.type, module.col, module.row),
+      });
     }
-
-    const addSpecial = (count: number, slots: ReadonlyArray<[number, number]>, color: string) => {
-      for (let i = 0; i < count; i++) {
-        const slot = slots[i % slots.length];
-        blocks.push({ col: slot[0], row: slot[1], color });
-      }
-    };
-
-    addSpecial(this.modules.engine,      ENGINE_MODULE_SLOTS,       '#7fd9ff');
-    addSpecial(this.modules.shield,      SHIELD_MODULE_SLOTS,       '#9f8cff');
-    addSpecial(this.modules.coolant,     COOLANT_MODULE_SLOTS,      '#7fffd2');
-    addSpecial(this.modules.weapon,      WEAPON_MODULE_SLOTS,       '#ff4444');
-    addSpecial(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS, '#7ed6f3');
     return blocks;
   }
 

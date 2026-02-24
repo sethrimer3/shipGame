@@ -735,7 +735,7 @@ export class World {
         h.vel.y += (dy / dh) * strength * dt;
       }
       if (dh < PICKUP_COLLECT_RADIUS) {
-        player.hp = Math.min(player.maxHp, player.hp + h.amount);
+        player.heal(h.amount);
         floatingTexts.push(makeFloatingText(
           { x: player.pos.x, y: player.pos.y - player.radius - 14 },
           `+${h.amount} HP`,

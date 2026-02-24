@@ -145,6 +145,49 @@ export function createMaterialItem(mat: Material, qty = 0): InventoryItem {
   };
 }
 
+// ── Ship module types (shared between player.ts, types.ts, game.ts) ───────────
+export type ShipModuleType = 'hull' | 'engine' | 'shield' | 'coolant' | 'weapon' | 'miningLaser';
+
+export interface ShipModules {
+  hull:        number;
+  engine:      number;
+  shield:      number;
+  coolant:     number;
+  weapon:      number;
+  miningLaser: number;
+}
+
+// ── Module upgrade system ─────────────────────────────────────────────────────
+
+/**
+ * Gems used to upgrade modules, indexed by (targetTier - 2).
+ * Ruby → T2, Sunstone → T3, Citrine → T4, Emerald → T5, etc.
+ */
+export const UPGRADE_TIER_GEMS: Material[] = [
+  Material.Ruby,      // T2
+  Material.Sunstone,  // T3
+  Material.Citrine,   // T4
+  Material.Emerald,   // T5
+  Material.Sapphire,  // T6
+  Material.Iolite,    // T7
+  Material.Amethyst,  // T8
+  Material.Diamond,   // T9
+  Material.Voidstone, // T10
+];
+
+/**
+ * Base gem quantity required to upgrade a module type to any tier.
+ * More powerful/advanced modules cost more gems per upgrade.
+ */
+export const MODULE_UPGRADE_BASE_COST: Record<ShipModuleType, number> = {
+  hull:        2,
+  coolant:     3,
+  engine:      4,
+  miningLaser: 4,
+  shield:      5,
+  weapon:      6,
+};
+
 // ── Crafting recipes ──────────────────────────────────────────────────────────
 export interface ResourceStack { material: Material; quantity: number }
 
@@ -156,6 +199,8 @@ export interface CraftingRecipe {
   inputs:      ResourceStack[];
   outputId:    string;   // toolbar item id
   outputQty:   number;
+  /** If set, crafting also grants one module of this type to the module palette. */
+  moduleType?: ShipModuleType;
 }
 
 export const CRAFTING_RECIPES: CraftingRecipe[] = [
@@ -167,6 +212,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Iron, quantity: 5 }],
     outputId:    'basic_cannon',
     outputQty:   1,
+    moduleType:  'weapon',
   },
   {
     id:          'laser_beam',
@@ -176,6 +222,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Gold, quantity: 3 }, { material: Material.Iron, quantity: 2 }],
     outputId:    'laser_beam',
     outputQty:   1,
+    moduleType:  'weapon',
   },
   {
     id:          'shield_gen',
@@ -185,6 +232,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Crystal, quantity: 3 }, { material: Material.Iron, quantity: 5 }],
     outputId:    'shield_gen',
     outputQty:   1,
+    moduleType:  'shield',
   },
   {
     id:          'heavy_armor',
@@ -194,6 +242,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Titanium, quantity: 5 }],
     outputId:    'heavy_armor',
     outputQty:   1,
+    moduleType:  'hull',
   },
   {
     id:          'dark_engine',
@@ -203,6 +252,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Darkite, quantity: 2 }, { material: Material.Crystal, quantity: 3 }],
     outputId:    'dark_engine',
     outputQty:   1,
+    moduleType:  'engine',
   },
   {
     id:          'mining_laser',
@@ -212,6 +262,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Iron, quantity: 3 }, { material: Material.Crystal, quantity: 1 }],
     outputId:    'mining_laser',
     outputQty:   1,
+    moduleType:  'miningLaser',
   },
   {
     id:          'void_lance',
@@ -221,6 +272,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Voidstone, quantity: 3 }, { material: Material.Darkite, quantity: 2 }],
     outputId:    'void_lance',
     outputQty:   1,
+    moduleType:  'weapon',
   },
   {
     id:          'resonance_beam',
@@ -230,6 +282,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Diamond, quantity: 3 }, { material: Material.Crystal, quantity: 2 }],
     outputId:    'resonance_beam',
     outputQty:   1,
+    moduleType:  'weapon',
   },
   {
     id:          'placer_laser',
@@ -239,6 +292,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Iron, quantity: 4 }, { material: Material.Crystal, quantity: 1 }],
     outputId:    'placer_laser',
     outputQty:   1,
+    moduleType:  'coolant',
   },
   {
     id:          'spread_cannon',
@@ -248,6 +302,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Iron, quantity: 5 }, { material: Material.Rock, quantity: 3 }],
     outputId:    'spread_cannon',
     outputQty:   1,
+    moduleType:  'weapon',
   },
   {
     id:          'missile_launcher',
@@ -257,6 +312,7 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     inputs:      [{ material: Material.Gold, quantity: 4 }, { material: Material.Crystal, quantity: 2 }],
     outputId:    'missile_launcher',
     outputQty:   1,
+    moduleType:  'weapon',
   },
 ];
 

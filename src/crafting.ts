@@ -134,6 +134,11 @@ export class CraftingSystem {
     // Equip in player so passive effects apply
     if (slotIdx !== -1) this.player.equipItem(slotIdx, def);
 
+    // Also add a ship module to the palette for placement in the ship editor
+    if (recipe.moduleType) {
+      this.player.addModuleToPalette(recipe.id, recipe.moduleType);
+    }
+
     this.notify(`Crafted: ${recipe.name}`);
     this._render();
   }

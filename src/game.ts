@@ -1,6 +1,6 @@
 import { InputManager }  from './input';
 import { Camera }        from './camera';
-import { Player, ShipModuleType, ShipModules, ModuleInfo }        from './player';
+import { Player, ModuleInfo, tierToRoman }        from './player';
 import { World }         from './world';
 import { Toolbar }       from './toolbar';
 import { CraftingSystem } from './crafting';
@@ -9,7 +9,7 @@ import { Projectile }    from './projectile';
 import { Particle, updateParticle, drawParticle, FloatingText, updateFloatingText, drawFloatingText } from './particle';
 import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
-import { len, Material, TOOLBAR_ITEM_DEFS, Vec2 } from './types';
+import { len, Material, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -107,7 +107,7 @@ const MODULE_CORE_DESC = 'Ship core. Nanobots: heals nearest modules at 10 HP/s 
 const TOOLTIP_CURSOR_OFFSET = 14; // pixels from cursor to tooltip edge
 const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 
-const BUILD_NUMBER = 12;
+const BUILD_NUMBER = 13;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -155,6 +155,13 @@ class Game {
   private _isSaveConfirmOpen = false;
   private _isShipStatsOpen = false;
 
+  /** Currently hovered palette module type (for U-key upgrades). */
+  private _hoveredPaletteType: ShipModuleType | null = null;
+  /** Upgrade key double-press tracking. */
+  private _upgradeKeyHeld = false;
+  private _upgradeKeyCount = 0;
+  private _upgradeKeyTimer = 0;
+
   /** Zone transition banner state */
   private _lastZoneName    = '';
   private _zoneBannerTimer = 0;
@@ -194,6 +201,8 @@ class Game {
       { type: 'engine',      col: -2, row: -1 },
       { type: 'engine',      col: -2, row:  1 },
     ]);
+    // Populate the module palette with the starter ship's modules
+    this.player.initStarterPalette();
     this.world   = new World();
     this.toolbar = new Toolbar();
     this.hud     = new HUD();
@@ -211,6 +220,25 @@ class Game {
       const n = document.createElement('div');
       n.id    = 'notification';
       document.getElementById('ui-overlay')?.appendChild(n);
+    }
+
+    // Create palette context menu element
+    if (!document.getElementById('palette-context-menu')) {
+      const menu = document.createElement('div');
+      menu.id        = 'palette-context-menu';
+      menu.className = 'palette-context-menu hidden';
+      menu.innerHTML = `
+        <div class="pcm-title" id="pcm-title"></div>
+        <button class="pcm-btn" id="pcm-recycle-btn">♻ Recycle (×1)</button>
+        <button class="pcm-btn pcm-upgrade-btn" id="pcm-upgrade-btn"></button>
+      `;
+      document.getElementById('ui-overlay')?.appendChild(menu);
+      // Close on click outside
+      document.addEventListener('click', (e) => {
+        if (!(e.target as HTMLElement).closest('#palette-context-menu')) {
+          this._hidePaletteContextMenu();
+        }
+      });
     }
 
     // Initial toolbar render
@@ -326,6 +354,21 @@ class Game {
       this._discardShipEditorAndClose();
     }
     if (!this.input.isDown('c')) this._shipEditorKeyHeld = false;
+
+    // ── U-key: upgrade hovered palette module (double press) ────────
+    if (this._upgradeKeyTimer > 0) this._upgradeKeyTimer -= dt;
+    else this._upgradeKeyCount = 0;
+
+    if (this._shipEditorOpen && this.input.isDown('u') && !this._upgradeKeyHeld) {
+      this._upgradeKeyHeld = true;
+      this._upgradeKeyCount++;
+      this._upgradeKeyTimer = 0.8;
+      if (this._upgradeKeyCount >= 2 && this._hoveredPaletteType) {
+        this._executeUpgradeForType(this._hoveredPaletteType);
+        this._upgradeKeyCount = 0;
+      }
+    }
+    if (!this.input.isDown('u')) this._upgradeKeyHeld = false;
 
     if (this._settingsOpen || this._shipEditorOpen || this.crafting.isOpen()) return;
 
@@ -602,11 +645,21 @@ class Game {
         item.dataset.module = mod.type;
         item.style.borderColor = mod.color;
         item.innerHTML = `
-          <span class="editor-palette-name" style="color:${mod.color}">${mod.name}</span>
+          <div class="editor-palette-header">
+            <span class="editor-palette-name" style="color:${mod.color}">${mod.name}</span>
+            <span class="palette-count-badge" id="palette-count-${mod.type}">×0</span>
+            <span class="palette-tier-badge" id="palette-tier-${mod.type}" style="display:none"></span>
+          </div>
           <span class="editor-palette-desc">${mod.desc}</span>
+          <span class="palette-upgrade-hint" id="palette-upgrade-hint-${mod.type}"></span>
         `;
 
         item.addEventListener('dragstart', (event) => {
+          // Don't allow drag if no unplaced modules available
+          if (!this._pendingModuleSlots) return;
+          const owned = this.player.getModuleCount(mod.type);
+          const placed = this._pendingModuleSlots.filter(s => s.type === mod.type).length;
+          if (placed >= owned) { event.preventDefault(); return; }
           this._draggingModuleType = mod.type;
           event.dataTransfer?.setData('text/plain', mod.type);
           event.dataTransfer?.setDragImage(item, item.clientWidth / 2, item.clientHeight / 2);
@@ -614,6 +667,14 @@ class Game {
         item.addEventListener('dragend', () => {
           this._draggingModuleType = null;
           this._clearEditorGridHighlights();
+        });
+        item.addEventListener('mouseenter', () => { this._hoveredPaletteType = mod.type; });
+        item.addEventListener('mouseleave', () => {
+          if (this._hoveredPaletteType === mod.type) this._hoveredPaletteType = null;
+        });
+        item.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          this._showPaletteContextMenu(mod.type, e.clientX, e.clientY);
         });
 
         paletteRoot.appendChild(item);
@@ -664,8 +725,17 @@ class Game {
             const moduleType = (event.dataTransfer?.getData('text/plain') || this._draggingModuleType) as ShipModuleType | '';
             if (!moduleType) return;
             if (this._draggingFromCell) {
+              // Moving from one grid cell to another – no palette count check needed
               this._swapPendingModuleCells(this._draggingFromCell.row, this._draggingFromCell.col, row, col);
             } else {
+              // Dragging from palette – enforce owned count
+              const slots = this._pendingModuleSlots ?? [];
+              const placed = slots.filter(s => s.type === moduleType).length;
+              const owned  = this.player.getModuleCount(moduleType);
+              if (placed >= owned) {
+                this.hud.showMessage(`No more ${moduleType} modules – craft more first.`, 2);
+                return;
+              }
               this._setPendingModuleAtCell(row, col, moduleType);
             }
           });
@@ -727,22 +797,58 @@ class Game {
     if (!this._pendingModuleSlots) this._pendingModuleSlots = this._slotsFromPlayer();
 
     const counts = this._countsFromSlots(this._pendingModuleSlots);
+
+    // Update palette items: count badge, tier badge, upgrade hint, greyed-out state
     for (const mod of MODULE_EDITOR_CONFIG) {
-      const countEl = document.getElementById(`module-count-${mod.type}`);
-      if (countEl) countEl.textContent = String(counts[mod.type]);
+      const owned  = this.player.getModuleCount(mod.type);
+      const placed = counts[mod.type];
+      const tier   = this.player.getModuleTier(mod.type);
+      const upgradeCost = this.player.getUpgradeCost(mod.type);
+
+      const countEl = document.getElementById(`palette-count-${mod.type}`);
+      if (countEl) countEl.textContent = `×${owned}`;
+
+      const tierEl = document.getElementById(`palette-tier-${mod.type}`);
+      if (tierEl) {
+        if (tier > 1) {
+          tierEl.textContent = `T${tierToRoman(tier)}`;
+          tierEl.style.display = '';
+        } else {
+          tierEl.style.display = 'none';
+        }
+      }
+
+      const hintEl = document.getElementById(`palette-upgrade-hint-${mod.type}`);
+      if (hintEl) {
+        if (upgradeCost) {
+          hintEl.textContent = `Upgrade → T${tierToRoman(tier + 1)}: ${upgradeCost.count}× ${upgradeCost.gem}`;
+        } else {
+          hintEl.textContent = 'Max tier reached';
+        }
+      }
+
+      const paletteItem = document.querySelector<HTMLElement>(`.editor-palette-item[data-module="${mod.type}"]`);
+      if (paletteItem) {
+        if (placed >= owned) paletteItem.classList.add('depleted');
+        else paletteItem.classList.remove('depleted');
+      }
+
+      // Legacy count display (may not exist)
+      const legacyCountEl = document.getElementById(`module-count-${mod.type}`);
+      if (legacyCountEl) legacyCountEl.textContent = String(counts[mod.type]);
     }
 
     this._renderPendingShipGrid();
 
-    const base = this.player.moduleCounts;
-    const hp      = this.player.maxHp + (counts.hull - base.hull) * 18;
-    const shield  = this.player.maxShield + (counts.shield - base.shield) * 20;
-    const regen   = this.player.shieldRegen + (counts.shield - base.shield) * 1.8;
-    const accel   = Math.max(0.1, 1 + counts.engine * 0.14);
-    const speed   = Math.max(0.1, 1 + counts.engine * 0.12);
-    const coolant = Math.max(0.1, 1 + counts.coolant * 0.3);
-    const wDmg    = 1 + counts.weapon * 0.08;
-    const wRate   = 1 + counts.weapon * 0.06;
+    const tierMult = (t: ShipModuleType) => Math.pow(2, this.player.getModuleTier(t) - 1);
+    const hp      = this.player.maxHp + (counts.hull - this.player.moduleCounts.hull) * 34 * tierMult('hull');
+    const shield  = this.player.maxShield + (counts.shield - this.player.moduleCounts.shield) * 20 * tierMult('shield');
+    const regen   = this.player.shieldRegen + (counts.shield - this.player.moduleCounts.shield) * 1.8 * tierMult('shield');
+    const accel   = Math.max(0.1, 1 + counts.engine * 0.14 * tierMult('engine'));
+    const speed   = Math.max(0.1, 1 + counts.engine * 0.12 * tierMult('engine'));
+    const coolant = Math.max(0.1, 1 + counts.coolant * 0.3 * tierMult('coolant'));
+    const wDmg    = 1 + counts.weapon * 0.08 * tierMult('weapon');
+    const wRate   = 1 + counts.weapon * 0.06 * tierMult('weapon');
 
     const stats = document.getElementById('ship-editor-stats');
     if (stats) {
@@ -797,6 +903,109 @@ class Game {
       return;
     }
     this._refreshShipEditorPanel();
+  }
+
+  // ── Palette context menu (recycle / upgrade) ────────────────────────────────
+
+  private _showPaletteContextMenu(type: ShipModuleType, x: number, y: number): void {
+    const menu = document.getElementById('palette-context-menu');
+    if (!menu) return;
+
+    const config = MODULE_EDITOR_CONFIG.find(c => c.type === type);
+    const owned  = this.player.getModuleCount(type);
+    const placed = (this._pendingModuleSlots ?? []).filter(s => s.type === type).length;
+    const unplaced = owned - placed;
+
+    const titleEl = document.getElementById('pcm-title');
+    if (titleEl) titleEl.textContent = config?.name ?? type;
+
+    const recycleBtn = document.getElementById('pcm-recycle-btn') as HTMLButtonElement | null;
+    if (recycleBtn) {
+      recycleBtn.disabled = owned <= 0;
+      // Preview recycle yield
+      const entry = this.player.modulePalette.find(e => e.type === type);
+      const recipe = entry ? CRAFTING_RECIPES.find(r => r.id === entry.recipeId) : null;
+      let yieldText = '';
+      if (recipe && recipe.inputs.length > 0) {
+        const parts = recipe.inputs
+          .map(i => ({ mat: i.material, qty: Math.floor(i.quantity * 0.25) }))
+          .filter(p => p.qty > 0)
+          .map(p => `${p.qty}× ${p.mat}`);
+        yieldText = parts.length > 0 ? ` → ${parts.join(', ')}` : ' → nothing';
+      }
+      recycleBtn.textContent = `♻ Recycle ×1${yieldText}`;
+      recycleBtn.onclick = () => {
+        const refund = this.player.recycleModuleFromPalette(type, CRAFTING_RECIPES);
+        if (refund !== null) {
+          // If more placed than now owned, remove one from the pending layout
+          const newOwned = this.player.getModuleCount(type);
+          if (this._pendingModuleSlots) {
+            const placedCount = this._pendingModuleSlots.filter(s => s.type === type).length;
+            if (placedCount > newOwned) {
+              // Remove the last placed module of this type
+              const lastIdx = this._pendingModuleSlots.map((s, i) => s.type === type ? i : -1)
+                .filter(i => i !== -1).pop() ?? -1;
+              if (lastIdx !== -1) this._pendingModuleSlots.splice(lastIdx, 1);
+            }
+          }
+          const msg = refund.length > 0
+            ? `Recycled ${config?.name ?? type}. Refunded: ${refund.map(r => `${r.quantity}× ${r.material}`).join(', ')}`
+            : `Recycled ${config?.name ?? type}.`;
+          this.hud.showMessage(msg, 3);
+          this._refreshShipEditorPanel();
+          this.crafting.refresh();
+        }
+        this._hidePaletteContextMenu();
+      };
+    }
+
+    const upgradeBtn = document.getElementById('pcm-upgrade-btn') as HTMLButtonElement | null;
+    if (upgradeBtn) {
+      const cost = this.player.getUpgradeCost(type);
+      if (cost) {
+        const tier    = this.player.getModuleTier(type);
+        const has     = this.player.getResource(cost.gem);
+        upgradeBtn.textContent = `⬆ Upgrade to T${tierToRoman(tier + 1)}: ${cost.count}× ${cost.gem} (have ${has})`;
+        upgradeBtn.disabled    = has < cost.count;
+        upgradeBtn.style.display = '';
+        upgradeBtn.onclick = () => {
+          const ok = this.player.upgradeModule(type);
+          if (ok) this.hud.showMessage(`${config?.name ?? type} upgraded to T${tierToRoman(this.player.getModuleTier(type))}!`, 3);
+          else    this.hud.showMessage('Not enough gems to upgrade.', 2);
+          this._refreshShipEditorPanel();
+          this.crafting.refresh();
+          this._hidePaletteContextMenu();
+        };
+      } else {
+        upgradeBtn.textContent   = 'Max tier reached';
+        upgradeBtn.disabled      = true;
+        upgradeBtn.style.display = '';
+        upgradeBtn.onclick       = null;
+      }
+    }
+
+    menu.style.left = `${x}px`;
+    menu.style.top  = `${y}px`;
+    menu.classList.remove('hidden');
+    this._updateUiPanelScaling();
+  }
+
+  private _hidePaletteContextMenu(): void {
+    document.getElementById('palette-context-menu')?.classList.add('hidden');
+  }
+
+  private _executeUpgradeForType(type: ShipModuleType): void {
+    const config = MODULE_EDITOR_CONFIG.find(c => c.type === type);
+    const ok = this.player.upgradeModule(type);
+    if (ok) {
+      this.hud.showMessage(`${config?.name ?? type} upgraded to T${tierToRoman(this.player.getModuleTier(type))}!`, 3);
+    } else {
+      const cost = this.player.getUpgradeCost(type);
+      if (!cost) this.hud.showMessage(`${config?.name ?? type} is already at max tier.`, 2);
+      else this.hud.showMessage(`Need ${cost.count}× ${cost.gem} to upgrade ${config?.name ?? type}.`, 2);
+    }
+    this._refreshShipEditorPanel();
+    this.crafting.refresh();
   }
 
   private _renderPendingShipGrid(): void {

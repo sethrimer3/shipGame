@@ -64,6 +64,14 @@ const PLANET_GRAVITY_STRENGTH = 2000;
 /** Maximum distance (beyond planet surface) within which planetary gravity acts. */
 const PLANET_GRAVITY_RANGE    = 600;
 
+const STATION_RING_RADIUS_WORLD = 260;
+const STATION_RING_THICKNESS_WORLD = 40;
+const STATION_MODULE_HP = 180;
+const STATION_TURRET_RANGE_WORLD = 560;
+const STATION_TURRET_FIRE_RATE = 2.4;
+const STATION_TURRET_DAMAGE = 22;
+const STATION_TURRET_PROJECTILE_SPEED = 620;
+const STATION_RESET_RADIUS_WORLD = 340;
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
 const PICKUP_SUCTION_RADIUS = 200;  // world units where pickups accelerate toward player
@@ -114,6 +122,19 @@ interface PlacedBlock {
   alive:    boolean;
 }
 
+interface SpaceStationModule {
+  pos: Vec2;
+  hp: number;
+  maxHp: number;
+  alive: boolean;
+  isInfinityModule: boolean;
+}
+
+interface SpaceStationTurret {
+  pos: Vec2;
+  fireCooldownSec: number;
+}
+
 interface GridPos { x: number; y: number }
 
 // ── Simple seeded pseudo-random (deterministic per chunk coord) ────────────
@@ -152,6 +173,9 @@ export class World {
   private readonly chunks = new Map<string, Chunk>();
   private readonly debris: Particle[] = [];   // block destruction particles
 
+  private stationModules: SpaceStationModule[] = [];
+  private stationTurrets: SpaceStationTurret[] = [];
+
   /** Floating resource pickups dropped by enemies and asteroid debris. */
   pickups: ResourcePickup[] = [];
 
@@ -169,6 +193,74 @@ export class World {
 
   /** Accumulated enemy kills – could be used for score */
   kills = 0;
+
+  constructor() {
+    this._initSpaceStation();
+  }
+
+  resetForLoop(): void {
+    this.chunks.clear();
+    this.debris.length = 0;
+    this.pickups = [];
+    this.healthPickups = [];
+    this.placedBlocks = [];
+    this.drones = [];
+    this.floatingModules = [];
+    this.kills = 0;
+    this._initSpaceStation();
+  }
+
+  private _initSpaceStation(): void {
+    this.stationModules = [];
+    this.stationTurrets = [];
+
+    const ringModuleCount = 56;
+    for (let i = 0; i < ringModuleCount; i++) {
+      const angle = (i / ringModuleCount) * Math.PI * 2;
+      const radius = STATION_RING_RADIUS_WORLD + (i % 2 === 0 ? 0 : STATION_RING_THICKNESS_WORLD * 0.35);
+      this.stationModules.push({
+        pos: { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius },
+        hp: STATION_MODULE_HP,
+        maxHp: STATION_MODULE_HP,
+        alive: true,
+        isInfinityModule: false,
+      });
+    }
+
+    const infinityPoints: Vec2[] = [];
+    const loops = [-1, 1];
+    for (const loopDir of loops) {
+      const loopCenterX = loopDir * 55;
+      const loopRadius = 46;
+      for (let i = 0; i < 18; i++) {
+        const angle = (i / 18) * Math.PI * 2;
+        infinityPoints.push({
+          x: loopCenterX + Math.cos(angle) * loopRadius,
+          y: Math.sin(angle) * loopRadius * 0.58,
+        });
+      }
+    }
+    for (const point of infinityPoints) {
+      this.stationModules.push({
+        pos: point,
+        hp: Number.POSITIVE_INFINITY,
+        maxHp: Number.POSITIVE_INFINITY,
+        alive: true,
+        isInfinityModule: true,
+      });
+    }
+
+    const turretAngles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+    for (const angle of turretAngles) {
+      this.stationTurrets.push({
+        pos: {
+          x: Math.cos(angle) * (STATION_RING_RADIUS_WORLD - 26),
+          y: Math.sin(angle) * (STATION_RING_RADIUS_WORLD - 26),
+        },
+        fireCooldownSec: Math.random() * 0.2,
+      });
+    }
+  }
 
   snapToBlockGrid(worldPos: Vec2): GridPos {
     const snap = (coord: number) => Math.floor(coord / BLOCK_SIZE) * BLOCK_SIZE;
@@ -236,8 +328,8 @@ export class World {
       });
     }
 
-    // Skip chunks very close to spawn (safe zone)
-    if (distFromOrigin < 200) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets };
+    // Skip chunks very close to spawn (safe zone around station)
+    if (distFromOrigin < STATION_RESET_RADIUS_WORLD + CHUNK_SIZE * 0.25) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets };
 
     // ── Asteroids ──────────────────────────────────────────────────
     for (let i = 0; i < ASTEROIDS_PER_CHUNK; i++) {
@@ -834,6 +926,58 @@ export class World {
       chunk.bombers = chunk.bombers.filter(bm => bm.alive);
     }
 
+
+    // ── Space station defenses ─────────────────────────────────
+    for (const proj of projectiles) {
+      if (!proj.alive || proj.owner !== 'enemy') continue;
+      for (const module of this.stationModules) {
+        if (!module.alive || module.isInfinityModule) continue;
+        if (circleVsRect(proj.pos.x, proj.pos.y, proj.radius, module.pos.x - BLOCK_SIZE / 2, module.pos.y - BLOCK_SIZE / 2, BLOCK_SIZE, BLOCK_SIZE)) {
+          proj.alive = false;
+          module.hp -= proj.damage;
+          if (module.hp <= 0) module.alive = false;
+          break;
+        }
+      }
+    }
+
+    const stationTargets: Vec2[] = [];
+    for (const chunk of chunks) {
+      for (const enemy of chunk.enemies) if (enemy.alive) stationTargets.push(enemy.pos);
+      for (const ic of chunk.interceptors) if (ic.alive) stationTargets.push(ic.pos);
+      for (const gs of chunk.gunships) if (gs.alive) stationTargets.push(gs.pos);
+      for (const bm of chunk.bombers) if (bm.alive) stationTargets.push(bm.pos);
+      for (const ms of chunk.motherships) if (ms.alive) stationTargets.push(ms.pos);
+    }
+    for (const drone of this.drones) if (drone.alive) stationTargets.push(drone.pos);
+
+    for (const turret of this.stationTurrets) {
+      turret.fireCooldownSec -= dt;
+      if (turret.fireCooldownSec > 0) continue;
+      let nearest: Vec2 | null = null;
+      let nearestDistSq = STATION_TURRET_RANGE_WORLD * STATION_TURRET_RANGE_WORLD;
+      for (const target of stationTargets) {
+        const dx = target.x - turret.pos.x;
+        const dy = target.y - turret.pos.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > nearestDistSq) continue;
+        nearestDistSq = distSq;
+        nearest = target;
+      }
+      if (!nearest) continue;
+      turret.fireCooldownSec = 1 / STATION_TURRET_FIRE_RATE;
+      projectiles.push(new Projectile(
+        turret.pos,
+        { x: nearest.x - turret.pos.x, y: nearest.y - turret.pos.y },
+        STATION_TURRET_PROJECTILE_SPEED,
+        STATION_TURRET_DAMAGE,
+        4,
+        '#d8f7ff',
+        'player',
+        2.4,
+      ));
+    }
+
     // ── Pickup update & collection ────────────────────────────────
     for (const p of this.pickups) {
       p.lifetime -= dt;
@@ -1089,6 +1233,25 @@ export class World {
       }
     }
 
+
+    // ── Space station ─────────────────────────────────────────────
+    for (const module of this.stationModules) {
+      if (!module.alive) continue;
+      ctx.fillStyle = module.isInfinityModule ? 'rgba(255,255,255,0.92)' : 'rgba(120,180,220,0.65)';
+      ctx.fillRect(module.pos.x - BLOCK_SIZE / 2, module.pos.y - BLOCK_SIZE / 2, BLOCK_SIZE, BLOCK_SIZE);
+      if (!module.isInfinityModule && Number.isFinite(module.maxHp)) {
+        const hpRatio = Math.max(0, module.hp / module.maxHp);
+        ctx.fillStyle = hpRatio > 0.45 ? 'rgba(90,255,170,0.75)' : 'rgba(255,120,120,0.82)';
+        ctx.fillRect(module.pos.x - BLOCK_SIZE / 2, module.pos.y + BLOCK_SIZE / 2 + 2, BLOCK_SIZE * hpRatio, 2);
+      }
+    }
+    for (const turret of this.stationTurrets) {
+      ctx.fillStyle = 'rgba(165,225,255,0.9)';
+      ctx.beginPath();
+      ctx.arc(turret.pos.x, turret.pos.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // ── Resource pickups ───────────────────────────────────────────
     const now = Date.now();
     for (const p of this.pickups) {
@@ -1149,6 +1312,11 @@ export class World {
   }
 
   /** Returns entity positions for the minimap. */
+
+  getPlayerSpawnPosition(): Vec2 {
+    return { x: 0, y: 0 };
+  }
+
   getMinimapData(camPos: Vec2): { enemies: Vec2[]; asteroids: Vec2[]; pickups: Vec2[] } {
     const chunks    = this._activeChunks(camPos);
     const enemies:   Vec2[] = [];

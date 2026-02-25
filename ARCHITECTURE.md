@@ -21,3 +21,22 @@
 2. Player places that module type in ship editor.
 3. On save, module slots are applied to player layout.
 4. Runtime stat recomputation maps each module type to its family and accumulates family stats.
+
+## Time-loop and station systems
+
+- `src/world.ts`
+  - Owns a resettable station model (`stationModules`, `stationTurrets`) separate from chunk content.
+  - Provides `resetForLoop()` to restore world chunks + station to pristine state.
+  - Station turrets scan nearby hostile entities and fire player-owned projectiles.
+- `src/game.ts`
+  - Handles run reset without page reload (`_resetRunAfterDeath`).
+  - Preserves only gem inventory on reset and re-initializes starter ship/toolbar state.
+  - Stores a persistent ship blueprint (`_autoBuildBlueprintSlots`) and auto-crafts missing modules in orthogonally connected, inside-out order.
+
+## Updated run flow
+
+1. Player dies -> death overlay appears.
+2. Press `R` -> game performs in-memory loop reset (no hard reload).
+3. World/station are rebuilt; player respawns at station center.
+4. Gems persist; other resources are cleared.
+5. As resources are re-collected, auto-crafting rebuilds saved design from the center outward.

@@ -35,3 +35,11 @@
 - Any finger drag directly on the game canvas (outside the joystick elements) acts as a right-click drag for block placement.
 - The desktop toolbar hint bar is hidden via `body.is-mobile #toolbar-hint { display: none }` to save screen space.
 
+
+## 2026-02-25 — Time-loop station + run reset economy
+
+- Added a persistent **time-loop run model**: when the ship is destroyed and the player restarts, all non-gem materials are wiped while gems are retained.
+- Added a destructible circular **space station ring** around origin with built-in defensive turrets.
+- Added non-destructible white center modules in an infinity pattern to visually mark the time-loop theme.
+- Added an **auto-crafting / auto-build** pipeline that preserves the saved ship design blueprint across runs and rebuilds missing modules from the center outward when recipe resources become available.
+- Design choice for consistency/performance: station geometry is deterministic and generated from fixed ring/loop points at reset.

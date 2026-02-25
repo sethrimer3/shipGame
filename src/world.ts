@@ -1,5 +1,6 @@
 import { Vec2, len, dist, Material, MATERIAL_PROPS, pickMaterial, pickGem } from './types';
 import { Asteroid, AsteroidTurret }  from './asteroid';
+import { Planet } from './planet';
 import { Enemy, EnemyModuleFragment } from './enemy';
 import { Drone } from './drone';
 import { Interceptor } from './interceptor';
@@ -49,6 +50,14 @@ const GUNSHIP_SPAWN_CHANCE     = 0.35; // probability per chunk attempt
 // Bomber spawning
 const BOMBER_MIN_DIST          = 2500; // minimum world distance for bombers
 const BOMBER_SPAWN_CHANCE      = 0.28; // probability per chunk attempt
+
+// Planet spawning
+const PLANET_MIN_DIST     = 500;   // minimum world distance for planets
+const PLANET_SPAWN_CHANCE = 0.25;  // probability per chunk attempt
+const PLANET_MIN_RADIUS   = 80;    // minimum planet radius (world units)
+const PLANET_MAX_RADIUS   = 160;   // maximum planet radius (world units)
+/** Disturbance radius applied when a projectile passes near a planet. */
+const PLANET_DISTURB_RADIUS = 70;
 
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
@@ -131,6 +140,7 @@ interface Chunk {
   interceptors: Interceptor[];
   gunships:     Gunship[];
   bombers:      Bomber[];
+  planets:      Planet[];
 }
 
 export class World {
@@ -209,6 +219,7 @@ export class World {
     const interceptors: Interceptor[]    = [];
     const gunships:     Gunship[]        = [];
     const bombers:      Bomber[]         = [];
+    const planets:      Planet[]         = [];
 
     // ── Stars ──────────────────────────────────────────────────────
     for (let i = 0; i < STAR_DENSITY; i++) {
@@ -221,7 +232,7 @@ export class World {
     }
 
     // Skip chunks very close to spawn (safe zone)
-    if (distFromOrigin < 200) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers };
+    if (distFromOrigin < 200) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets };
 
     // ── Asteroids ──────────────────────────────────────────────────
     for (let i = 0; i < ASTEROIDS_PER_CHUNK; i++) {
@@ -324,7 +335,15 @@ export class World {
       bombers.push(new Bomber({ x: bx, y: by }, bTier));
     }
 
-    return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers };
+    // ── Planets (spawn beyond 500 world units, one per chunk) ─────
+    if (distFromOrigin >= PLANET_MIN_DIST && rng() < PLANET_SPAWN_CHANCE) {
+      const px     = baseX + 200 + rng() * (CHUNK_SIZE - 400);
+      const py     = baseY + 200 + rng() * (CHUNK_SIZE - 400);
+      const radius = PLANET_MIN_RADIUS + Math.floor(rng() * (PLANET_MAX_RADIUS - PLANET_MIN_RADIUS));
+      planets.push(new Planet({ x: px, y: py }, radius, rng));
+    }
+
+    return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets };
   }
 
   /** Helper: place 1–2 turrets on perimeter blocks of an asteroid. */
@@ -916,6 +935,20 @@ export class World {
     }
     this.drones = this.drones.filter(d => d.alive);
 
+    // ── Planet molecule simulation + projectile disturbance ───────
+    for (const chunk of chunks) {
+      for (const planet of chunk.planets) {
+        planet.update(dt);
+        // Disturb molecules when a projectile passes close to the planet
+        for (const proj of projectiles) {
+          if (!proj.alive) continue;
+          if (dist(proj.pos, planet.pos) < planet.radius + PLANET_DISTURB_RADIUS) {
+            planet.disturb(proj.pos, proj.damage * 4, PLANET_DISTURB_RADIUS);
+          }
+        }
+      }
+    }
+
     // ── Floating module update (passive damage + drift) ──────────
     for (const fm of this.floatingModules) {
       fm.pos.x += fm.vel.x * dt;
@@ -939,6 +972,13 @@ export class World {
     const maxX = camPos.x + halfW + cullMargin;
     const minY = camPos.y - halfH - cullMargin;
     const maxY = camPos.y + halfH + cullMargin;
+
+    // ── Planets ────────────────────────────────────────────────────
+    for (const chunk of chunks) {
+      for (const planet of chunk.planets) {
+        planet.draw(ctx, minX, minY, maxX, maxY);
+      }
+    }
 
     // ── Asteroids ──────────────────────────────────────────────────
     for (const chunk of chunks) {

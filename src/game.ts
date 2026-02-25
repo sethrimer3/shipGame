@@ -129,7 +129,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 15;
+const BUILD_NUMBER = 16;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;

@@ -7,7 +7,7 @@ import { Interceptor } from './interceptor';
 import { Gunship } from './gunship';
 import { Bomber } from './bomber';
 import { Particle, FloatingText, makeFloatingText }  from './particle';
-import { Projectile } from './projectile';
+import { Projectile, StationBeam } from './projectile';
 import { Player }    from './player';
 import { BLOCK_SIZE, Block } from './block';
 import { Mothership, mothershipTierForDist } from './mothership';
@@ -68,9 +68,9 @@ const STATION_RING_RADIUS_WORLD = 260;
 const STATION_RING_THICKNESS_WORLD = 40;
 const STATION_MODULE_HP = 180;
 const STATION_TURRET_RANGE_WORLD = 560;
-const STATION_TURRET_FIRE_RATE = 2.4;
-const STATION_TURRET_DAMAGE = 22;
-const STATION_TURRET_PROJECTILE_SPEED = 620;
+const STATION_TURRET_FIRE_RATE = 0.55;
+const STATION_TURRET_DAMAGE = 260;
+const STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD = 4500;
 const STATION_RESET_RADIUS_WORLD = 340;
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
@@ -193,6 +193,7 @@ export class World {
 
   /** Accumulated enemy kills – could be used for score */
   kills = 0;
+  private _stationBeamShotsThisFrame = 0;
 
   constructor() {
     this._initSpaceStation();
@@ -493,6 +494,12 @@ export class World {
     return result;
   }
 
+  consumeStationBeamShotsThisFrame(): number {
+    const shotCount = this._stationBeamShotsThisFrame;
+    this._stationBeamShotsThisFrame = 0;
+    return shotCount;
+  }
+
   update(
     dt:           number,
     player:       Player,
@@ -501,6 +508,7 @@ export class World {
     floatingTexts: FloatingText[],
     camPos:       Vec2,
   ): void {
+    this._stationBeamShotsThisFrame = 0;
     const chunks = this._activeChunks(camPos);
 
     for (const chunk of chunks) {
@@ -627,7 +635,9 @@ export class World {
           if (!proj.alive || proj.owner !== 'player') continue;
           if (dist(proj.pos, enemy.pos) < enemy.radius + proj.radius) {
             proj.alive = false;
-            const result = enemy.damageAt(proj.pos, proj.damage, particles, Math.random);
+            const isSapphireArmoredTarget = enemy.tier.minDist >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
+            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const result = enemy.damageAt(proj.pos, appliedDamage, particles, Math.random);
             // Alert the enemy: player hit it, so it should start chasing
             if (!result.killed) enemy.alertedByPlayer();
             // Spawn floating modules for any detached fragments
@@ -636,7 +646,7 @@ export class World {
             }
             floatingTexts.push(makeFloatingText(
               { x: enemy.pos.x, y: enemy.pos.y - enemy.radius },
-              `-${proj.damage}`,
+              `-${appliedDamage}`,
               '#ffcc44',
             ));
             if (result.killed) {
@@ -707,10 +717,12 @@ export class World {
           const mod = ms.moduleAt(proj.pos);
           if (mod) {
             proj.alive = false;
-            ms.damageModule(mod, proj.damage, particles, Math.random);
+            const isSapphireArmoredTarget = ms.tier.minDist >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
+            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            ms.damageModule(mod, appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: proj.pos.x, y: proj.pos.y - 10 },
-              `-${proj.damage}`,
+              `-${appliedDamage}`,
               '#ffcc44',
             ));
             if (ms.isDead) {
@@ -836,10 +848,12 @@ export class World {
           if (!proj.alive || proj.owner !== 'player') continue;
           if (dist(proj.pos, ic.pos) < ic.radius + proj.radius) {
             proj.alive = false;
-            const killed = ic.damage(proj.damage, particles, Math.random);
+            const isSapphireArmoredTarget = len(ic.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
+            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const killed = ic.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: ic.pos.x, y: ic.pos.y - ic.radius },
-              `-${proj.damage}`,
+              `-${appliedDamage}`,
               '#ffcc44',
             ));
             if (killed) {
@@ -868,10 +882,12 @@ export class World {
           if (!proj.alive || proj.owner !== 'player') continue;
           if (dist(proj.pos, gs.pos) < gs.radius + proj.radius) {
             proj.alive = false;
-            const killed = gs.damage(proj.damage, particles, Math.random);
+            const isSapphireArmoredTarget = len(gs.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
+            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const killed = gs.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: gs.pos.x, y: gs.pos.y - gs.radius },
-              `-${proj.damage}`,
+              `-${appliedDamage}`,
               '#ffcc44',
             ));
             if (killed) {
@@ -905,10 +921,12 @@ export class World {
           if (!proj.alive || proj.owner !== 'player') continue;
           if (dist(proj.pos, bm.pos) < bm.radius + proj.radius) {
             proj.alive = false;
-            const killed = bm.damage(proj.damage, particles, Math.random);
+            const isSapphireArmoredTarget = len(bm.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
+            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const killed = bm.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: bm.pos.x, y: bm.pos.y - bm.radius },
-              `-${proj.damage}`,
+              `-${appliedDamage}`,
               '#ffcc44',
             ));
             if (killed) {
@@ -966,16 +984,12 @@ export class World {
       }
       if (!nearest) continue;
       turret.fireCooldownSec = 1 / STATION_TURRET_FIRE_RATE;
-      projectiles.push(new Projectile(
+      projectiles.push(new StationBeam(
         turret.pos,
         { x: nearest.x - turret.pos.x, y: nearest.y - turret.pos.y },
-        STATION_TURRET_PROJECTILE_SPEED,
         STATION_TURRET_DAMAGE,
-        4,
-        '#d8f7ff',
-        'player',
-        2.4,
       ));
+      this._stationBeamShotsThisFrame++;
     }
 
     // ── Pickup update & collection ────────────────────────────────
@@ -1069,10 +1083,12 @@ export class World {
         if (!proj.alive || proj.owner !== 'player') continue;
         if (dist(proj.pos, drone.pos) < drone.radius + proj.radius) {
           proj.alive = false;
-          const killed = drone.damage(proj.damage, particles, Math.random);
+          const isSapphireArmoredTarget = len(drone.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
+          const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+          const killed = drone.damage(appliedDamage, particles, Math.random);
           floatingTexts.push(makeFloatingText(
             { x: drone.pos.x, y: drone.pos.y - drone.radius },
-            `-${proj.damage}`,
+            `-${appliedDamage}`,
             '#ffcc44',
           ));
           if (killed) {

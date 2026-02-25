@@ -129,7 +129,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 19;
+const BUILD_NUMBER = 20;
 
 const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
   { type: 'miningLaser', col:  2, row:  0 },
@@ -521,6 +521,11 @@ class Game {
     // ── World / enemies / collisions ────────────────────────────────
     this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position);
     this._runAutoCrafting();
+
+    const stationBeamShotCount = this.world.consumeStationBeamShotsThisFrame();
+    if (stationBeamShotCount > 0) {
+      this.camera.shake(Math.min(stationBeamShotCount * 1.2, 3.2));
+    }
 
     // ── Level-up notification ────────────────────────────────────
     if (this.player.leveledUp) {
@@ -1287,6 +1292,8 @@ class Game {
       this.sunRenderer.drawSunRays(
         ctx,
         { x: 0, y: 0 },
+        150,
+        this.player.pos,
         canvas.width,
         canvas.height,
         (p: Vec2) => this.camera.worldToScreen(p),

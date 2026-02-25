@@ -2,6 +2,8 @@ import { Vec2 } from './types';
 
 const ULTRA_SUN_BLOOM_STEPS = 4;
 const SHADOW_LENGTH = 3000;
+const SUN_RAYS_BASE_RADIUS_MULT = 6;
+const SUN_RAYS_NEAR_FADE_RADIUS_MULT = 10;
 
 type ShadowQuad = {
   sv1x: number; sv1y: number;
@@ -357,24 +359,33 @@ export class SunRenderer {
     public drawSunRays(
         ctx:           CanvasRenderingContext2D,
         sunPos:        Vec2,
+        sunRadius:     number,
+        playerPos:     Vec2,
         canvasWidth:   number,
         canvasHeight:  number,
         worldToScreen: (p: Vec2) => Vec2,
         occluders:     { verts: Vec2[] }[],
     ): void {
         const sunScreen = worldToScreen(sunPos);
-        const maxRadius = Math.max(canvasWidth, canvasHeight) * 2;
+        const maxRadius = Math.max(canvasWidth, canvasHeight) * 6;
 
         const sunPassCtx = this.ensureSunPassLayer(canvasWidth, canvasHeight);
+
+        const dxToPlayer = playerPos.x - sunPos.x;
+        const dyToPlayer = playerPos.y - sunPos.y;
+        const distToPlayer = Math.sqrt(dxToPlayer * dxToPlayer + dyToPlayer * dyToPlayer);
+        const fullyTransparentDistWorld = sunRadius * SUN_RAYS_BASE_RADIUS_MULT;
+        const fullyOpaqueDistWorld = sunRadius * SUN_RAYS_NEAR_FADE_RADIUS_MULT;
+        const nearSunFadeT = Math.max(0, Math.min(1, (distToPlayer - fullyTransparentDistWorld) / (fullyOpaqueDistWorld - fullyTransparentDistWorld)));
 
         // Ambient radial gradient centred on the sun
         const ambient = sunPassCtx.createRadialGradient(
             sunScreen.x, sunScreen.y, 0,
             sunScreen.x, sunScreen.y, maxRadius,
         );
-        ambient.addColorStop(0,    'rgba(255,192,96,0.42)');
-        ambient.addColorStop(0.18, 'rgba(255,166,70,0.28)');
-        ambient.addColorStop(0.42, 'rgba(255,140,56,0.16)');
+        ambient.addColorStop(0,    `rgba(255,192,96,${(0.42 * nearSunFadeT).toFixed(4)})`);
+        ambient.addColorStop(0.18, `rgba(255,166,70,${(0.28 * nearSunFadeT).toFixed(4)})`);
+        ambient.addColorStop(0.42, `rgba(255,140,56,${(0.16 * nearSunFadeT).toFixed(4)})`);
         ambient.addColorStop(1,    'rgba(255,140,56,0)');
         sunPassCtx.fillStyle = ambient;
         sunPassCtx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -387,8 +398,8 @@ export class SunRenderer {
             sunScreen.x, sunScreen.y, 0,
             sunScreen.x, sunScreen.y, bloomRadius,
         );
-        bloom.addColorStop(0,    'rgba(255,220,140,0.18)');
-        bloom.addColorStop(0.25, 'rgba(255,190,100,0.10)');
+        bloom.addColorStop(0,    `rgba(255,220,140,${(0.18 * nearSunFadeT).toFixed(4)})`);
+        bloom.addColorStop(0.25, `rgba(255,190,100,${(0.10 * nearSunFadeT).toFixed(4)})`);
         bloom.addColorStop(1,    'rgba(255,140,56,0)');
         sunPassCtx.fillStyle = bloom;
         sunPassCtx.fillRect(0, 0, canvasWidth, canvasHeight);

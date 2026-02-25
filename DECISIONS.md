@@ -1,5 +1,28 @@
 # DECISIONS
 
+## 2026-02-25 — Continued performance optimization
+
+### `_activeChunks()` per-frame caching (`src/world.ts`)
+- `_activeChunks(camPos)` is called up to 4× per frame (`update`, `draw`, `getShadowOccluders`, `getMinimapData`) and previously allocated a new 49-element array on every call.
+- A `_cachedChunkKey` string (formed from `cx0,cy0`) and `_cachedChunks` array are now maintained. The cached array is returned as-is when the key matches, rebuilding only when the camera crosses a chunk boundary (every 1200 world units). This eliminates three unnecessary array allocations per frame under normal gameplay.
+- `resetForLoop()` clears both fields so the cache does not survive across runs.
+
+### Planet molecule simulation at-rest skipping (`src/planet.ts`)
+- `Planet.update()` now skips the spring-physics integration for any molecule whose squared displacement from rest is < 0.01 **and** whose squared velocity is < 0.25. These molecules have already settled; re-integrating them produces no visible movement.
+- At steady state (no recent impacts or disturbances) almost all molecules qualify, cutting the per-frame planet update from O(molecule_count) arithmetic to just threshold comparisons.
+
+### Planet molecule render batching (`src/planet.ts`)
+- Molecules are sorted by color string once at the end of `_generateMolecules()`. Because molecule colors never change, this order is stable for the lifetime of the planet.
+- `draw()` now uses a running `batchColor` string; when the color changes it closes the previous `beginPath()` batch with a single `fill()` call and opens a new one. This groups ~1–15 unique colors per planet into batched `ctx.rect()` calls rather than one `ctx.fillRect()` call per molecule, significantly reducing 2D context state changes.
+
+### In-place array compaction (`src/game.ts`)
+- The `splice(0, length, ...filter(...))` pattern for `projectiles`, `particles`, and `floatingTexts` was replaced with explicit in-place compaction loops (`let j=0; for ... if(alive) arr[j++] = arr[i]; arr.length = j`). This eliminates one intermediate array allocation and one spread-copy per array per frame.
+
+### Quality-gated planet molecule simulation (`src/graphics-settings.ts`, `src/world.ts`)
+- Added `planetMoleculeSimulation: boolean` to `GraphicsConfig`. Set to `false` at **Low** quality, `true` at **Medium** and **High**.
+- When `false`, `Planet.update()` skips the entire molecule physics loop (only plants are updated). This is the single biggest CPU savings at Low quality when planets are in view.
+- `World.update()` accepts `config: GraphicsConfig` and passes `!config.planetMoleculeSimulation` to `planet.update()`.
+
 ## 2026-02-25 — Graphics quality settings and post-process shaders
 
 - Added three quality presets (Low / Medium / High) selectable from the Settings panel (Tab).

@@ -131,7 +131,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 25;
+const BUILD_NUMBER = 26;
 
 const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
   { type: 'miningLaser', col:  2, row:  0 },
@@ -545,7 +545,7 @@ class Game {
     if (this._zoneBannerTimer > 0) this._zoneBannerTimer -= dt;
 
     // ── World / enemies / collisions ────────────────────────────────
-    this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position);
+    this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position, this._graphicsConfig);
     this._runAutoCrafting();
 
     const stationBeamShotCount = this.world.consumeStationBeamShotsThisFrame();
@@ -566,20 +566,29 @@ class Game {
     }
     this.camera.updateShake(dt);
 
-    // ── Projectiles ─────────────────────────────────────────────────
+    // ── Projectiles (in-place compaction avoids per-frame array allocation) ──
     for (const p of this.projectiles) p.update(dt);
-    this.projectiles.splice(0, this.projectiles.length,
-      ...this.projectiles.filter(p => p.alive));
+    let pj = 0;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      if (this.projectiles[i].alive) this.projectiles[pj++] = this.projectiles[i];
+    }
+    this.projectiles.length = pj;
 
-    // ── Particles ──────────────────────────────────────────────────
+    // ── Particles (in-place compaction) ────────────────────────────
     for (const p of this.particles) updateParticle(p, dt);
-    this.particles.splice(0, this.particles.length,
-      ...this.particles.filter(p => p.lifetime > 0));
+    let pa = 0;
+    for (let i = 0; i < this.particles.length; i++) {
+      if (this.particles[i].lifetime > 0) this.particles[pa++] = this.particles[i];
+    }
+    this.particles.length = pa;
 
-    // ── Floating texts ──────────────────────────────────────────────
+    // ── Floating texts (in-place compaction) ────────────────────────
     for (const f of this.floatingTexts) updateFloatingText(f, dt);
-    this.floatingTexts.splice(0, this.floatingTexts.length,
-      ...this.floatingTexts.filter(f => f.lifetime > 0));
+    let ft = 0;
+    for (let i = 0; i < this.floatingTexts.length; i++) {
+      if (this.floatingTexts[i].lifetime > 0) this.floatingTexts[ft++] = this.floatingTexts[i];
+    }
+    this.floatingTexts.length = ft;
 
     // ── Camera ─────────────────────────────────────────────────────
     this.camera.follow(this.player.pos, dt);

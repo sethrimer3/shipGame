@@ -20,6 +20,8 @@ export interface GraphicsConfig {
   postProcessVignette:        boolean;
   /** Whether to draw a screen-space bloom overlay. */
   postProcessBloom:           boolean;
+  /** Whether to run planet molecule spring-physics simulation (expensive on large planets). */
+  planetMoleculeSimulation:   boolean;
 }
 
 export const QUALITY_PRESETS: Record<GraphicsQuality, GraphicsConfig> = {
@@ -33,6 +35,7 @@ export const QUALITY_PRESETS: Record<GraphicsQuality, GraphicsConfig> = {
     sunShadowRays:           false,
     postProcessVignette:     false,
     postProcessBloom:        false,
+    planetMoleculeSimulation: false,
   },
   medium: {
     quality:                 'medium',
@@ -44,6 +47,7 @@ export const QUALITY_PRESETS: Record<GraphicsQuality, GraphicsConfig> = {
     sunShadowRays:           true,
     postProcessVignette:     true,
     postProcessBloom:        false,
+    planetMoleculeSimulation: true,
   },
   high: {
     quality:                 'high',
@@ -55,5 +59,6 @@ export const QUALITY_PRESETS: Record<GraphicsQuality, GraphicsConfig> = {
     sunShadowRays:           true,
     postProcessVignette:     true,
     postProcessBloom:        true,
+    planetMoleculeSimulation: true,
   },
 };

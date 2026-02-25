@@ -7,6 +7,8 @@ import { Particle, makeExplosion } from './particle';
 
 export { Drone } from './drone';
 export { Interceptor } from './interceptor';
+export { Gunship } from './gunship';
+export { Bomber } from './bomber';
 
 export interface EnemyTier {
   minDist:       number;

@@ -877,3 +877,94 @@ body.ship-editor-layout-open #crafting-panel {
 .pcm-upgrade-btn:hover:not(:disabled) {
   background: rgba(255, 215, 0, 0.18);
 }
+
+/* ── Mobile Controls ─────────────────────────────────────────────────────── */
+
+#mobile-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Corner buttons (ship builder / settings) */
+.mobile-corner-btn {
+  position: absolute;
+  background: rgba(10, 20, 40, 0.82);
+  border: 1px solid rgba(120, 200, 255, 0.45);
+  border-radius: 8px;
+  color: #9eddff;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  padding: 8px 14px;
+  pointer-events: all;
+  cursor: pointer;
+  touch-action: manipulation;
+  z-index: 50;
+}
+
+.mobile-corner-btn:active {
+  background: rgba(100, 180, 255, 0.25);
+}
+
+.mobile-top-left {
+  top: 56px;
+  left: 10px;
+}
+
+.mobile-top-right {
+  top: 56px;
+  right: 10px;
+}
+
+/* Virtual joysticks */
+.mobile-joystick {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  pointer-events: all;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#mobile-left-joystick {
+  bottom: 90px;
+  left: 24px;
+}
+
+#mobile-right-joystick {
+  bottom: 90px;
+  right: 24px;
+}
+
+.mobile-joystick-knob {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(126, 207, 255, 0.35);
+  border: 2px solid rgba(126, 207, 255, 0.7);
+  position: absolute;
+  pointer-events: none;
+  transition: none;
+}
+
+/* Hide toolbar hint on mobile */
+body.is-mobile #toolbar-hint {
+  display: none;
+}
+
+/* Shrink toolbar on mobile */
+body.is-mobile #toolbar-container {
+  bottom: 0;
+  padding-bottom: 6px;
+}
+
+body.is-mobile .toolbar-slot {
+  width: 44px;
+  height: 44px;
+}
+

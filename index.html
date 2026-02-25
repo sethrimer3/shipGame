@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>Ship Game</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -86,6 +88,18 @@
       <div id="toolbar-container">
         <div id="toolbar"></div>
         <div id="toolbar-hint">Scroll or 1–8 to select &nbsp;|&nbsp; C: Ship Builder &nbsp;|&nbsp; ESC: Pause &nbsp;|&nbsp; Tab: Settings &nbsp;|&nbsp; Left-click: Fire &nbsp;|&nbsp; Right-click: Place Block</div>
+      </div>
+
+      <!-- Mobile-only controls (shown via JS when touch device detected) -->
+      <div id="mobile-controls" class="hidden">
+        <button id="mobile-ship-builder-btn" class="mobile-corner-btn mobile-top-left">⚙ Ship</button>
+        <button id="mobile-settings-btn" class="mobile-corner-btn mobile-top-right">☰</button>
+        <div id="mobile-left-joystick" class="mobile-joystick">
+          <div id="mobile-left-knob" class="mobile-joystick-knob"></div>
+        </div>
+        <div id="mobile-right-joystick" class="mobile-joystick">
+          <div id="mobile-right-knob" class="mobile-joystick-knob"></div>
+        </div>
       </div>
     </div>
   </div>

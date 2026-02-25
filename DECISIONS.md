@@ -1,6 +1,13 @@
 # DECISIONS
 
-## 2026-02-25 — Planet enhancements: plants, natural physics, particle trails, minimap
+## 2026-02-25 — Refactoring: extract SpaceStation from world.ts
+
+- Extracted the space station subsystem from `world.ts` into a dedicated `src/station.ts` module, continuing the refactoring plan started in the "split monolithic files" PR.
+- `SpaceStation` class owns all station state: ring modules, infinity center modules, and defensive turrets. It exposes `reset()`, `update(dt, targets, projectiles)`, `draw(ctx)`, `consumeBeamShots()`, and `getSpawnPosition()`.
+- `STATION_RESET_RADIUS_WORLD` and `STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD` are exported from `station.ts` and re-imported by `world.ts` for chunk-generation safe-zone and sapphire-armor checks respectively.
+- `world.ts` shrank from 1417 → 1288 lines. The station-specific constants and interfaces are no longer duplicated in the world file.
+
+
 
 - **3× planet size**: `PLANET_MIN_RADIUS` raised from 80 to 240, `PLANET_MAX_RADIUS` from 160 to 480 (world units). `POWDER_SIZE` increased from 10 to 15 to keep molecule count manageable (~4× instead of ~9×).
 - **Natural impact physics**: Projectiles now stop on the first frame they enter a planet's radius (instead of passing through). A localized `impactAt(hitPos, force)` method kills molecules within `IMPACT_CRATER_RADIUS` (22 wu), giving them outward velocity as ejected splash particles, and pushes nearby molecules outward within `IMPACT_SPLASH_RADIUS` (55 wu). Material type scales the response: water splashes 1.6× faster than rock (1.0×), lava barely moves (0.25×).

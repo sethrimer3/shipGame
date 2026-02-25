@@ -15,6 +15,15 @@
   - Ship editor palette is driven by `MODULE_EDITOR_CONFIG` (now includes per-item module types).
   - Preview stats aggregate pending slot module types into family counts.
 
+## Space station
+
+- `src/station.ts`
+  - Self-contained `SpaceStation` class: ring modules, infinity center modules, defensive turrets.
+  - `update(dt, targets, projectiles)` handles incoming enemy projectile hits and turret firing.
+  - `draw(ctx)` renders all station geometry.
+  - `reset()` rebuilds station state on loop restart.
+  - Exports `STATION_RESET_RADIUS_WORLD` (chunk safe zone) and `STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD` (armor immunity threshold) for use in `world.ts`.
+
 ## Data flow
 
 1. Recipe crafted -> per-item `moduleType` added to palette.

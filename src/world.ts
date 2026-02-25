@@ -3,6 +3,8 @@ import { Asteroid, AsteroidTurret }  from './asteroid';
 import { Enemy, EnemyModuleFragment } from './enemy';
 import { Drone } from './drone';
 import { Interceptor } from './interceptor';
+import { Gunship } from './gunship';
+import { Bomber } from './bomber';
 import { Particle, FloatingText, makeFloatingText }  from './particle';
 import { Projectile } from './projectile';
 import { Player }    from './player';
@@ -41,6 +43,12 @@ const TURRET_ASTEROID_CHANCE   = 0.30; // chance an asteroid gets turrets
 // Interceptor spawning
 const INTERCEPTOR_MIN_DIST     = 1500; // minimum world distance for interceptors
 const INTERCEPTOR_SPAWN_CHANCE = 0.40; // probability per chunk attempt
+// Gunship spawning
+const GUNSHIP_MIN_DIST         = 1200; // minimum world distance for gunships
+const GUNSHIP_SPAWN_CHANCE     = 0.35; // probability per chunk attempt
+// Bomber spawning
+const BOMBER_MIN_DIST          = 2500; // minimum world distance for bombers
+const BOMBER_SPAWN_CHANCE      = 0.28; // probability per chunk attempt
 
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
@@ -121,6 +129,8 @@ interface Chunk {
   motherships:  Mothership[];
   turrets:      AsteroidTurret[];
   interceptors: Interceptor[];
+  gunships:     Gunship[];
+  bombers:      Bomber[];
 }
 
 export class World {
@@ -197,6 +207,8 @@ export class World {
     const motherships:  Mothership[]     = [];
     const turrets:      AsteroidTurret[] = [];
     const interceptors: Interceptor[]    = [];
+    const gunships:     Gunship[]        = [];
+    const bombers:      Bomber[]         = [];
 
     // ── Stars ──────────────────────────────────────────────────────
     for (let i = 0; i < STAR_DENSITY; i++) {
@@ -209,7 +221,7 @@ export class World {
     }
 
     // Skip chunks very close to spawn (safe zone)
-    if (distFromOrigin < 200) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors };
+    if (distFromOrigin < 200) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers };
 
     // ── Asteroids ──────────────────────────────────────────────────
     for (let i = 0; i < ASTEROIDS_PER_CHUNK; i++) {
@@ -282,7 +294,37 @@ export class World {
       }
     }
 
-    return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors };
+    // ── Gunships (spawn in pairs beyond 1200 world units) ─────────
+    if (distFromOrigin >= GUNSHIP_MIN_DIST && rng() < GUNSHIP_SPAWN_CHANCE) {
+      const groupSize = 1 + Math.floor(rng() * 2); // 1–2 per group
+      const gx = baseX + 100 + rng() * (CHUNK_SIZE - 200);
+      const gy = baseY + 100 + rng() * (CHUNK_SIZE - 200);
+      let gTier: 0 | 1 | 2;
+      if (distFromOrigin >= 10000)     gTier = 2;
+      else if (distFromOrigin >= 4000) gTier = 1;
+      else                             gTier = 0;
+      for (let i = 0; i < groupSize; i++) {
+        const ang    = (i / groupSize) * Math.PI * 2;
+        const spread = 50 + rng() * 50;
+        gunships.push(new Gunship(
+          { x: gx + Math.cos(ang) * spread, y: gy + Math.sin(ang) * spread },
+          gTier,
+        ));
+      }
+    }
+
+    // ── Bombers (spawn solo beyond 2500 world units) ───────────────
+    if (distFromOrigin >= BOMBER_MIN_DIST && rng() < BOMBER_SPAWN_CHANCE) {
+      const bx = baseX + 100 + rng() * (CHUNK_SIZE - 200);
+      const by = baseY + 100 + rng() * (CHUNK_SIZE - 200);
+      let bTier: 0 | 1 | 2;
+      if (distFromOrigin >= 12000)     bTier = 2;
+      else if (distFromOrigin >= 6000) bTier = 1;
+      else                             bTier = 0;
+      bombers.push(new Bomber({ x: bx, y: by }, bTier));
+    }
+
+    return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers };
   }
 
   /** Helper: place 1–2 turrets on perimeter blocks of an asteroid. */
@@ -692,6 +734,80 @@ export class World {
         }
       }
       chunk.interceptors = chunk.interceptors.filter(ic => ic.alive);
+
+      // ── Gunship AI update ──────────────────────────────────────────
+      for (const gs of chunk.gunships) {
+        if (!gs.alive) continue;
+        steerShipAroundAsteroids(gs.pos, gs.vel, gs.radius, chunk.asteroids, dt);
+        gs.update(dt, player, projectiles, particles);
+        for (const asteroid of chunk.asteroids) {
+          resolveShipAsteroidCollision(gs.pos, gs.vel, gs.radius, gs.mass, asteroid);
+        }
+      }
+
+      // ── Gunship-projectile collisions (player hits gunship) ───────
+      for (const gs of chunk.gunships) {
+        if (!gs.alive) continue;
+        for (const proj of projectiles) {
+          if (!proj.alive || proj.owner !== 'player') continue;
+          if (dist(proj.pos, gs.pos) < gs.radius + proj.radius) {
+            proj.alive = false;
+            const killed = gs.damage(proj.damage, particles, Math.random);
+            floatingTexts.push(makeFloatingText(
+              { x: gs.pos.x, y: gs.pos.y - gs.radius },
+              `-${proj.damage}`,
+              '#ffcc44',
+            ));
+            if (killed) {
+              this.kills++;
+              player.gainXP(gs.xpValue);
+              floatingTexts.push(makeFloatingText(
+                { x: gs.pos.x, y: gs.pos.y - gs.radius - 18 },
+                `+${gs.xpValue} XP`,
+                '#2ecc71',
+              ));
+            }
+          }
+        }
+      }
+      chunk.gunships = chunk.gunships.filter(gs => gs.alive);
+
+      // ── Bomber AI update ───────────────────────────────────────────
+      for (const bm of chunk.bombers) {
+        if (!bm.alive) continue;
+        steerShipAroundAsteroids(bm.pos, bm.vel, bm.radius, chunk.asteroids, dt);
+        bm.update(dt, player, projectiles, particles);
+        for (const asteroid of chunk.asteroids) {
+          resolveShipAsteroidCollision(bm.pos, bm.vel, bm.radius, bm.mass, asteroid);
+        }
+      }
+
+      // ── Bomber-projectile collisions (player hits bomber) ─────────
+      for (const bm of chunk.bombers) {
+        if (!bm.alive) continue;
+        for (const proj of projectiles) {
+          if (!proj.alive || proj.owner !== 'player') continue;
+          if (dist(proj.pos, bm.pos) < bm.radius + proj.radius) {
+            proj.alive = false;
+            const killed = bm.damage(proj.damage, particles, Math.random);
+            floatingTexts.push(makeFloatingText(
+              { x: bm.pos.x, y: bm.pos.y - bm.radius },
+              `-${proj.damage}`,
+              '#ffcc44',
+            ));
+            if (killed) {
+              this.kills++;
+              player.gainXP(bm.xpValue);
+              floatingTexts.push(makeFloatingText(
+                { x: bm.pos.x, y: bm.pos.y - bm.radius - 18 },
+                `+${bm.xpValue} XP`,
+                '#2ecc71',
+              ));
+            }
+          }
+        }
+      }
+      chunk.bombers = chunk.bombers.filter(bm => bm.alive);
     }
 
     // ── Pickup update & collection ────────────────────────────────
@@ -888,6 +1004,20 @@ export class World {
       }
     }
 
+    // ── Gunships ───────────────────────────────────────────────────
+    for (const chunk of chunks) {
+      for (const gs of chunk.gunships) {
+        if (gs.alive) gs.draw(ctx);
+      }
+    }
+
+    // ── Bombers ────────────────────────────────────────────────────
+    for (const chunk of chunks) {
+      for (const bm of chunk.bombers) {
+        if (bm.alive) bm.draw(ctx);
+      }
+    }
+
     // ── Resource pickups ───────────────────────────────────────────
     const now = Date.now();
     for (const p of this.pickups) {
@@ -957,6 +1087,8 @@ export class World {
       for (const e  of chunk.enemies)     if (e.alive)    enemies.push({ ...e.pos });
       for (const ms of chunk.motherships) if (ms.alive)   enemies.push({ ...ms.pos });
       for (const ic of chunk.interceptors) if (ic.alive)  enemies.push({ ...ic.pos });
+      for (const gs of chunk.gunships)    if (gs.alive)   enemies.push({ ...gs.pos });
+      for (const bm of chunk.bombers)     if (bm.alive)   enemies.push({ ...bm.pos });
       for (const a  of chunk.asteroids)   if (a.alive)    asteroids.push({ ...a.centre });
     }
     for (const d of this.drones) if (d.alive) enemies.push({ ...d.pos });

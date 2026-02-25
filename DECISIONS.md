@@ -1,6 +1,14 @@
 # DECISIONS
 
-## 2026-02-25 — Planet water, lava core, and gravitational attraction
+## 2026-02-25 — Planet enhancements: plants, natural physics, particle trails, minimap
+
+- **3× planet size**: `PLANET_MIN_RADIUS` raised from 80 to 240, `PLANET_MAX_RADIUS` from 160 to 480 (world units). `POWDER_SIZE` increased from 10 to 15 to keep molecule count manageable (~4× instead of ~9×).
+- **Natural impact physics**: Projectiles now stop on the first frame they enter a planet's radius (instead of passing through). A localized `impactAt(hitPos, force)` method kills molecules within `IMPACT_CRATER_RADIUS` (22 wu), giving them outward velocity as ejected splash particles, and pushes nearby molecules outward within `IMPACT_SPLASH_RADIUS` (55 wu). Material type scales the response: water splashes 1.6× faster than rock (1.0×), lava barely moves (0.25×).
+- **Plants**: Each planet grows 24–64 plants (radial line segments, 8–30 wu long) from its surface outward, using seeded RNG for position and color. Plants grow at 14 wu/s. When an impact occurs within `PLANT_BURN_RADIUS` (90 wu), nearby plants ignite and burn over ~2.6 s (orange → dark red → gone).
+- **Particle motion-blur trails**: `Particle` interface gains optional `trail` and `prevPos` fields. When `trail = true`, `updateParticle` records the previous position each frame. `drawParticle` draws a semi-transparent stroke from `prevPos` to `pos` (lineWidth = radius × 1.5, alpha 0.35) when the particle speed exceeds 15 wu/s, simulating motion blur. Planet splash particles are created with `trail = true`.
+- **Minimap planet circles**: `getMinimapData()` now returns a `planets` array with `{ pos, radius, color }`. The minimap draws each planet as a large filled circle whose color reflects the actual visual surface state (sampled from ~40 surface-layer molecules, averaged to a hex color, refreshed every 2.5 s).
+
+
 
 - **Water surface**: Outer molecules (d/radius > 0.78) on every planet are now colored with water blues (`#1e90ff`, `#00bfff`, etc.) to represent a surface ocean layer.
 - **Molten lava core**: Inner molecules (d/radius < 0.38) are colored with lava tones (`#ff4500`, `#ff6600`, `#ffaa00`, etc.). A radial gradient glow (yellow → orange → transparent) is rendered beneath those molecules each frame for a magma-heat visual effect.

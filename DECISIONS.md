@@ -1,5 +1,11 @@
 # DECISIONS
 
+## 2026-02-25 — Planet water, lava core, and gravitational attraction
+
+- **Water surface**: Outer molecules (d/radius > 0.78) on every planet are now colored with water blues (`#1e90ff`, `#00bfff`, etc.) to represent a surface ocean layer.
+- **Molten lava core**: Inner molecules (d/radius < 0.38) are colored with lava tones (`#ff4500`, `#ff6600`, `#ffaa00`, etc.). A radial gradient glow (yellow → orange → transparent) is rendered beneath those molecules each frame for a magma-heat visual effect.
+- **Planetary gravity**: Planets now exert gravitational attraction on the player ship and all enemy ships (enemies, gunships, bombers, interceptors, drones). Formula: `accel = PLANET_GRAVITY_STRENGTH * planet.radius / max(d², 400)` applied within `planet.radius + PLANET_GRAVITY_RANGE` (600 wu). Larger planets attract more strongly; closer proximity increases acceleration (inverse-square falloff). Gravity is skipped when the ship is already inside the planet body (d < planet.radius) to avoid runaway acceleration.
+
 ## 2026-02-25 — Per-item module categories
 
 - Crafting recipes now grant per-item module types (for example `basic_cannon`, `laser_beam`, `shield_gen`) instead of only broad shared module categories.

@@ -129,7 +129,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 23;
+const BUILD_NUMBER = 24;
 
 const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
   { type: 'miningLaser', col:  2, row:  0 },
@@ -1281,14 +1281,8 @@ class Game {
     // ── Sun ray-tracing / shadow overlay (screen-space, after camera) ─────
     if (this.player.alive) {
       const occluders = this.world.getShadowOccluders(this.camera.position);
-      // Add player as occluder
-      const pr = this.player.radius;
-      occluders.push({ verts: [
-        { x: this.player.pos.x - pr, y: this.player.pos.y - pr },
-        { x: this.player.pos.x + pr, y: this.player.pos.y - pr },
-        { x: this.player.pos.x + pr, y: this.player.pos.y + pr },
-        { x: this.player.pos.x - pr, y: this.player.pos.y + pr },
-      ] as Vec2[] });
+      // Add player ship modules as occluders
+      for (const occ of this.player.getModuleShadowOccluders()) occluders.push(occ);
       this.sunRenderer.drawSunRays(
         ctx,
         { x: 0, y: 0 },

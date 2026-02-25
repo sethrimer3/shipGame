@@ -1,5 +1,14 @@
 # DECISIONS
 
+## 2026-02-25 — Per-module shadow occluders for ships
+
+- Each ship class (`Player`, `Enemy`, `Mothership`) now exposes a `getModuleShadowOccluders()` method returning one rotated quad per alive module instead of a single bounding-box AABB.
+- `Player` and `Enemy` compute rotated quads using `cos(angle)`/`sin(angle)` with precomputed half-extents (`hc = half * cosA`, `hs = half * sinA`) to minimize per-module arithmetic.
+- `Mothership` does not rotate, so its occluders are simple axis-aligned AABBs per module, which is cheapest to compute.
+- `game.ts` replaced the single player AABB with `player.getModuleShadowOccluders()`.
+- `world.ts` `getShadowOccluders` replaced single enemy/mothership AABBs with `getModuleShadowOccluders()`.
+- Result: shadows now visually follow the ship outline (module-shaped silhouettes) rather than a large uniform square.
+
 ## 2026-02-25 — Refactoring: extract SpaceStation from world.ts
 
 - Extracted the space station subsystem from `world.ts` into a dedicated `src/station.ts` module, continuing the refactoring plan started in the "split monolithic files" PR.

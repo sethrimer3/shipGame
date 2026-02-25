@@ -153,6 +153,24 @@ export class Mothership {
     };
   }
 
+  /** Returns per-module world-space AABB occluders for shadow casting. */
+  getModuleShadowOccluders(): { verts: Vec2[] }[] {
+    const half   = MODULE_SIZE / 2;
+    const result: { verts: Vec2[] }[] = [];
+    for (const m of this.modules) {
+      if (!m.alive) continue;
+      const cx = this.pos.x + m.col * MODULE_SIZE;
+      const cy = this.pos.y + m.row * MODULE_SIZE;
+      result.push({ verts: [
+        { x: cx - half, y: cy - half },
+        { x: cx + half, y: cy - half },
+        { x: cx + half, y: cy + half },
+        { x: cx - half, y: cy + half },
+      ] });
+    }
+    return result;
+  }
+
   // ── Hit test – returns the module at a world point (or null) ─────────
   moduleAt(worldPt: Vec2): MsModule | null {
     const lx = worldPt.x - this.pos.x;

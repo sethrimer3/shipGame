@@ -59,6 +59,11 @@ const PLANET_MAX_RADIUS   = 160;   // maximum planet radius (world units)
 /** Disturbance radius applied when a projectile passes near a planet. */
 const PLANET_DISTURB_RADIUS = 70;
 
+/** Gravitational acceleration constant for planet attraction: accel = K * radius / d² */
+const PLANET_GRAVITY_STRENGTH = 2000;
+/** Maximum distance (beyond planet surface) within which planetary gravity acts. */
+const PLANET_GRAVITY_RANGE    = 600;
+
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
 const PICKUP_SUCTION_RADIUS = 200;  // world units where pickups accelerate toward player
@@ -946,6 +951,32 @@ export class World {
             planet.disturb(proj.pos, proj.damage * 4, PLANET_DISTURB_RADIUS);
           }
         }
+      }
+    }
+
+    // ── Planetary gravitational attraction ────────────────────────
+    for (const chunk of chunks) {
+      for (const planet of chunk.planets) {
+        const gravRange = planet.radius + PLANET_GRAVITY_RANGE;
+        const applyGravity = (pos: Vec2, vel: Vec2): void => {
+          const dx = planet.pos.x - pos.x;
+          const dy = planet.pos.y - pos.y;
+          const d2 = dx * dx + dy * dy;
+          const d  = Math.sqrt(d2);
+          if (d > gravRange || d < planet.radius) return;
+          const accel = PLANET_GRAVITY_STRENGTH * planet.radius / Math.max(d2, 400);
+          const invD  = 1 / d;
+          vel.x += dx * invD * accel * dt;
+          vel.y += dy * invD * accel * dt;
+        };
+        applyGravity(player.pos, player.vel);
+        for (const c of chunks) {
+          for (const e  of c.enemies)       { if (e.alive)  applyGravity(e.pos,  e.vel);  }
+          for (const gs of c.gunships)      { if (gs.alive) applyGravity(gs.pos, gs.vel); }
+          for (const bm of c.bombers)       { if (bm.alive) applyGravity(bm.pos, bm.vel); }
+          for (const ic of c.interceptors)  { if (ic.alive) applyGravity(ic.pos, ic.vel); }
+        }
+        for (const drone of this.drones) { if (drone.alive) applyGravity(drone.pos, drone.vel); }
       }
     }
 

@@ -22,6 +22,18 @@ const PLANET_PALETTES: string[][] = [
   ['#c5a07a', '#d6b08a', '#b0906a'],  // ochre
 ];
 
+/** Lava/magma colors for the molten planet core. */
+const LAVA_COLORS: string[] = ['#ff4500', '#ff6600', '#ffaa00', '#ff3300', '#cc2200', '#ff8800'];
+
+/** Water colors for the planetary surface ocean. */
+const WATER_COLORS: string[] = ['#1e90ff', '#00bfff', '#4fc3f7', '#29b6f6', '#0277bd', '#0288d1'];
+
+/** Fraction of planet radius below which molecules are lava. */
+const LAVA_CORE_RATIO  = 0.38;
+
+/** Fraction of planet radius above which molecules are water. */
+const WATER_SURF_RATIO = 0.78;
+
 interface PowderMolecule {
   pos:     Vec2;
   vel:     Vec2;
@@ -55,7 +67,15 @@ export class Planet {
         if (d + jitter > this.radius) continue;
         const wx = this.pos.x + cx;
         const wy = this.pos.y + cy;
-        const color = palette[Math.floor(rng() * palette.length)];
+        const relD  = d / this.radius;
+        let color: string;
+        if (relD < LAVA_CORE_RATIO) {
+          color = LAVA_COLORS[Math.floor(rng() * LAVA_COLORS.length)];
+        } else if (relD > WATER_SURF_RATIO) {
+          color = WATER_COLORS[Math.floor(rng() * WATER_COLORS.length)];
+        } else {
+          color = palette[Math.floor(rng() * palette.length)];
+        }
         this.molecules.push({
           pos:     { x: wx, y: wy },
           vel:     { x: 0,  y: 0  },
@@ -109,6 +129,25 @@ export class Planet {
       this.pos.x + this.radius < minX || this.pos.x - this.radius > maxX ||
       this.pos.y + this.radius < minY || this.pos.y - this.radius > maxY
     ) return;
+
+    // Draw glowing molten core beneath the molecules
+    const coreRadius = this.radius * LAVA_CORE_RATIO;
+    if (
+      this.pos.x + coreRadius >= minX && this.pos.x - coreRadius <= maxX &&
+      this.pos.y + coreRadius >= minY && this.pos.y - coreRadius <= maxY
+    ) {
+      const grad = ctx.createRadialGradient(
+        this.pos.x, this.pos.y, 0,
+        this.pos.x, this.pos.y, coreRadius,
+      );
+      grad.addColorStop(0,   'rgba(255, 220, 60,  0.75)');
+      grad.addColorStop(0.5, 'rgba(255, 100, 0,   0.45)');
+      grad.addColorStop(1,   'rgba(200, 30,  0,   0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y, coreRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     const half = POWDER_SIZE * 0.5;
     for (const m of this.molecules) {

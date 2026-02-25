@@ -4,6 +4,89 @@ import { Player } from './player';
 import { Projectile } from './projectile';
 import { Particle, makeExplosion } from './particle';
 
+// ── Asteroid plants ──────────────────────────────────────────────────────────
+
+const VINE_SQ   = 5;                          // vine square size in pixels
+const FLOWER_SQ = 7;                          // flower square size (~BLOCK_SIZE/3)
+
+const VINE_GREENS   = ['#2d6a20', '#3a8a28', '#4da830', '#1e4a15'];
+const FLOWER_COLORS = ['#ffe840', '#b040d0', '#ff6090', '#e83030'];
+
+// 8-directional unit steps (orthogonal + diagonal)
+const DIRS8 = [
+  { dx:  1, dy:  0 }, { dx: -1, dy:  0 },
+  { dx:  0, dy:  1 }, { dx:  0, dy: -1 },
+  { dx:  1, dy:  1 }, { dx:  1, dy: -1 },
+  { dx: -1, dy:  1 }, { dx: -1, dy: -1 },
+];
+
+interface PlantSquare { x: number; y: number; size: number; color: string; }
+interface AsteroidPlant { hostCol: number; hostRow: number; squares: PlantSquare[]; }
+
+function _buildPlants(blocks: Block[], rng: () => number): AsteroidPlant[] {
+  if (rng() > 0.12) return [];   // ~12% chance of any plants (rarely)
+
+  const occupied = new Set(blocks.map(b => `${b.col},${b.row}`));
+
+  const outerBlocks = blocks.filter(b =>
+    [`${b.col+1},${b.row}`, `${b.col-1},${b.row}`,
+     `${b.col},${b.row+1}`, `${b.col},${b.row-1}`].some(k => !occupied.has(k))
+  );
+  if (outerBlocks.length === 0) return [];
+
+  const plants: AsteroidPlant[] = [];
+  const plantCount = 1 + Math.floor(rng() * 2); // 1–2 plants
+
+  for (let p = 0; p < plantCount; p++) {
+    const host      = outerBlocks[Math.floor(rng() * outerBlocks.length)];
+    const squares: PlantSquare[] = [];
+    const vineColor = VINE_GREENS[Math.floor(rng() * VINE_GREENS.length)];
+
+    // Pick an outward direction away from the filled interior
+    const outwardDirs = DIRS8.filter(d => !occupied.has(`${host.col + d.dx},${host.row + d.dy}`));
+    const startDir    = outwardDirs.length > 0
+      ? outwardDirs[Math.floor(rng() * outwardDirs.length)]
+      : DIRS8[Math.floor(rng() * DIRS8.length)];
+
+    let vx   = host.col * BLOCK_SIZE + BLOCK_SIZE / 2;
+    let vy   = host.row * BLOCK_SIZE + BLOCK_SIZE / 2;
+    let dirX = startDir.dx;
+    let dirY = startDir.dy;
+
+    const vineLen = 3 + Math.floor(rng() * 5); // 3–7 vine squares
+
+    for (let i = 0; i < vineLen; i++) {
+      // Occasionally bend the vine ±45°
+      if (i > 0 && rng() < 0.35) {
+        const idx    = DIRS8.findIndex(d => d.dx === dirX && d.dy === dirY);
+        const turn   = rng() < 0.5 ? 1 : -1;
+        const newDir = DIRS8[(idx + turn + 8) % 8];
+        dirX = newDir.dx;
+        dirY = newDir.dy;
+      }
+      vx += dirX * VINE_SQ;
+      vy += dirY * VINE_SQ;
+      squares.push({ x: vx - VINE_SQ / 2, y: vy - VINE_SQ / 2, size: VINE_SQ, color: vineColor });
+    }
+
+    // 55% chance of a small flower at the vine tip
+    if (rng() < 0.55) {
+      const fc = FLOWER_COLORS[Math.floor(rng() * FLOWER_COLORS.length)];
+      const fh = Math.floor(FLOWER_SQ / 2);
+      // Centre petal + cross petals
+      squares.push({ x: vx - fh,              y: vy - fh,              size: FLOWER_SQ, color: fc });
+      squares.push({ x: vx - fh + FLOWER_SQ,  y: vy - fh,              size: FLOWER_SQ, color: fc });
+      squares.push({ x: vx - fh - FLOWER_SQ,  y: vy - fh,              size: FLOWER_SQ, color: fc });
+      squares.push({ x: vx - fh,              y: vy - fh + FLOWER_SQ,  size: FLOWER_SQ, color: fc });
+      squares.push({ x: vx - fh,              y: vy - fh - FLOWER_SQ,  size: FLOWER_SQ, color: fc });
+    }
+
+    plants.push({ hostCol: host.col, hostRow: host.row, squares });
+  }
+
+  return plants;
+}
+
 /** Returns true if the segment (x1,y1)→(x2,y2) intersects the AABB (rx,ry,rw,rh). */
 function segmentVsRect(
   x1: number, y1: number, x2: number, y2: number,
@@ -168,6 +251,7 @@ export class AsteroidTurret {
 /** A rock formation made of a grid of breakable blocks. */
 export class Asteroid {
   readonly blocks: Block[] = [];
+  readonly plants: AsteroidPlant[] = [];
   readonly width:  number;
   readonly height: number;
   alive = true;
@@ -215,6 +299,12 @@ export class Asteroid {
         this.blocks.push(new Block(mat, c, r));
       }
     }
+
+    // Rarely grow small plants on perimeter blocks (skip gem nodes)
+    if (!forcedMaterial) {
+      const generated = _buildPlants(this.blocks, rng);
+      for (const pl of generated) this.plants.push(pl);
+    }
   }
 
   /** Check if a world-space point hits any live block; returns that block or null. */
@@ -259,6 +349,23 @@ export class Asteroid {
     for (const b of this.blocks) {
       if (b.alive) b.draw(ctx, this.pos.x, this.pos.y);
     }
+
+    // Draw plants on top of blocks; hide if host block was destroyed
+    for (const plant of this.plants) {
+      let hostAlive = false;
+      for (const b of this.blocks) {
+        if (b.col === plant.hostCol && b.row === plant.hostRow && b.alive) {
+          hostAlive = true;
+          break;
+        }
+      }
+      if (!hostAlive) continue;
+      for (const sq of plant.squares) {
+        ctx.fillStyle = sq.color;
+        ctx.fillRect(this.pos.x + sq.x, this.pos.y + sq.y, sq.size, sq.size);
+      }
+    }
+
     // Warn players with a pulsing hazard icon on trap asteroids that haven't fired yet
     if (this.isTrap && !this.trapTriggered) {
       const c   = this.centre;

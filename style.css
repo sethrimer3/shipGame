@@ -464,6 +464,38 @@ body {
   background: rgba(255, 80, 80, 0.3);
 }
 
+/* ── Graphics quality button group ── */
+.quality-btn-group {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.quality-btn {
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.55);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  pointer-events: all;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.quality-btn:hover {
+  background: rgba(126, 207, 255, 0.15);
+  color: #9eddff;
+  border-color: rgba(126, 207, 255, 0.4);
+}
+
+.quality-btn-active {
+  background: rgba(126, 207, 255, 0.22) !important;
+  border-color: rgba(126, 207, 255, 0.7) !important;
+  color: #7ecfff !important;
+}
+
 .hidden {
   display: none !important;
 }

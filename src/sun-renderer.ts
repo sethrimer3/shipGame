@@ -1,6 +1,6 @@
 import { Vec2 } from './types';
+import { GraphicsConfig } from './graphics-settings';
 
-const ULTRA_SUN_BLOOM_STEPS = 4;
 const SHADOW_LENGTH = 3000;
 const SUN_RAYS_BASE_RADIUS_MULT = 6;
 const SUN_RAYS_NEAR_FADE_RADIUS_MULT = 10;
@@ -33,8 +33,9 @@ export class SunRenderer {
         pos: Vec2,
         radius: number,
         gameTimeSec: number,
+        config: GraphicsConfig,
     ): void {
-        this.drawUltraSun(ctx, pos, radius, gameTimeSec);
+        this.drawUltraSun(ctx, pos, radius, gameTimeSec, config.sunBloomSteps);
     }
 
     private drawUltraSun(
@@ -42,6 +43,7 @@ export class SunRenderer {
         pos: Vec2,
         radius: number,
         gameTimeSec: number,
+        bloomSteps: number,
     ): void {
         const cache = this.getOrCreateSunRenderCache(radius);
         const pulseAmount = 1 + Math.sin(gameTimeSec * 1.2) * 0.012;
@@ -130,19 +132,20 @@ export class SunRenderer {
 
         ctx.restore();
 
-        this.drawUltraSunBloom(ctx, pos, animatedRadius);
+        if (bloomSteps > 0) this.drawUltraSunBloom(ctx, pos, animatedRadius, bloomSteps);
     }
 
     private drawUltraSunBloom(
         ctx: CanvasRenderingContext2D,
         pos: Vec2,
         screenRadius: number,
+        bloomSteps: number,
     ): void {
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
 
-        for (let i = 0; i < ULTRA_SUN_BLOOM_STEPS; i++) {
-            const t = i / Math.max(1, ULTRA_SUN_BLOOM_STEPS - 1);
+        for (let i = 0; i < bloomSteps; i++) {
+            const t = i / Math.max(1, bloomSteps - 1);
             const radius = screenRadius * (1.15 + t * 2.65);
             const alpha = 0.2 * (1 - t);
             const radiusBucket = Math.round(radius / 16) * 16;
@@ -365,7 +368,9 @@ export class SunRenderer {
         canvasHeight:  number,
         worldToScreen: (p: Vec2) => Vec2,
         occluders:     { verts: Vec2[] }[],
+        config:        GraphicsConfig,
     ): void {
+        if (!config.sunShadowRays) return;
         const sunScreen = worldToScreen(sunPos);
         const maxRadius = Math.max(canvasWidth, canvasHeight) * 6;
 

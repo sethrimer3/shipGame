@@ -1,5 +1,17 @@
 # DECISIONS
 
+## 2026-02-25 — Graphics quality settings and post-process shaders
+
+- Added three quality presets (Low / Medium / High) selectable from the Settings panel (Tab).
+- **Low**: 35% of stars rendered, no star halos, no chromatic aberration, no particle trails, no sun bloom, no shadow rays, no post-process effects. Best for weaker hardware.
+- **Medium**: 65% of stars, halos enabled, no chromatic aberration, 2 sun bloom passes, shadow rays enabled, vignette shader only.
+- **High** (default): 100% stars, all effects on, 4 bloom passes, vignette + bloom post-process shaders.
+- Created `src/graphics-settings.ts` for the `GraphicsQuality` type, `GraphicsConfig` interface, and `QUALITY_PRESETS` record.
+- Created `src/post-process.ts` (`PostProcessRenderer`): vignette draws a radial gradient over screen edges; bloom copies the rendered frame to an offscreen canvas, blurs it with `ctx.filter='blur(6px)'`, then blits it back with `screen` blending at α=0.22.
+- `StarfieldRenderer.draw()` now accepts `GraphicsConfig` and limits `drawCount` per layer via `starCountMultiplier`; skips halo and chromatic-aberration draw-calls based on flags.
+- `SunRenderer.draw()` / `drawSunRays()` now accept `GraphicsConfig`; bloom-step count is a parameter (0 = skip bloom); shadow-ray pass is skipped when `sunShadowRays` is false.
+- `drawParticle()` accepts an optional `skipTrails` flag; when true the motion-blur stroke is not drawn.
+
 ## 2026-02-25 — Per-module shadow occluders for ships
 
 - Each ship class (`Player`, `Enemy`, `Mothership`) now exposes a `getModuleShadowOccluders()` method returning one rotated quad per alive module instead of a single bounding-box AABB.

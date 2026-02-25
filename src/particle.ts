@@ -73,12 +73,12 @@ export function updateParticle(p: Particle, dt: number): void {
   p.alpha    = Math.max(0, p.lifetime / p.maxLife);
 }
 
-export function drawParticle(ctx: CanvasRenderingContext2D, p: Particle): void {
+export function drawParticle(ctx: CanvasRenderingContext2D, p: Particle, skipTrails = false): void {
   ctx.globalAlpha = p.alpha;
   ctx.fillStyle = p.color;
 
   // Motion-blur trail for fast-moving particles
-  if (p.trail && p.prevPos) {
+  if (!skipTrails && p.trail && p.prevPos) {
     const spd = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
     if (spd > 15) {
       ctx.save();

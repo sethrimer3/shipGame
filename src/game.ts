@@ -129,7 +129,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 16;
+const BUILD_NUMBER = 17;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -289,6 +289,40 @@ class Game {
     }
 
     this._initShipEditor();
+
+    // ── Mobile setup ───────────────────────────────────────────────────────
+    if (this.input.isMobile) {
+      document.body.classList.add('is-mobile');
+      document.getElementById('mobile-controls')?.classList.remove('hidden');
+
+      // Request landscape orientation when supported
+      try {
+        const orientation = (screen as unknown as { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
+        if (orientation?.lock) {
+          orientation.lock('landscape').catch(() => { /* silently ignore if not allowed */ });
+        }
+      } catch (_) { /* ignore */ }
+
+      // Mobile ship-builder button (top-left)
+      document.getElementById('mobile-ship-builder-btn')?.addEventListener('click', () => {
+        if (this._shipEditorOpen) {
+          this._requestCloseShipEditor();
+        } else {
+          this._shipEditorOpen = true;
+          this._setShipEditorVisible(true);
+        }
+      });
+
+      // Mobile settings button (top-right)
+      document.getElementById('mobile-settings-btn')?.addEventListener('click', () => {
+        this._settingsOpen = !this._settingsOpen;
+        const panel = document.getElementById('settings-panel');
+        if (panel) {
+          if (this._settingsOpen) panel.classList.remove('hidden');
+          else panel.classList.add('hidden');
+        }
+      });
+    }
 
     requestAnimationFrame((t) => this.loop(t));
   }

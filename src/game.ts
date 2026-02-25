@@ -9,7 +9,7 @@ import { Projectile }    from './projectile';
 import { Particle, updateParticle, drawParticle, FloatingText, updateFloatingText, drawFloatingText } from './particle';
 import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
-import { len, Material, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST } from './types';
+import { len, Material, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -40,12 +40,21 @@ interface ModuleEditorConfig {
 }
 
 const MODULE_EDITOR_CONFIG: ModuleEditorConfig[] = [
-  { type: 'hull',        name: 'Hull',         desc: 'Main structure. Raises maximum HP.',                         color: '#2ecc71' },
-  { type: 'engine',      name: 'Engine',       desc: 'Boosts acceleration and top speed.',                         color: '#7fd9ff' },
-  { type: 'shield',      name: 'Shield',       desc: 'Increases max shield and regen.',                             color: '#9f8cff' },
-  { type: 'coolant',     name: 'Coolant',      desc: 'Reduces overheat drain and speeds recovery.',                 color: '#7fffd2' },
-  { type: 'weapon',      name: 'Weapon',       desc: 'Boosts weapon damage (+8%) and fire rate (+6%) per module.', color: '#ff4444' },
-  { type: 'miningLaser', name: 'Mining Laser', desc: 'Adds a front-facing mining laser beam (+1 beam per module).', color: '#7ed6f3' },
+  { type: 'hull',             name: 'Hull',             desc: 'Main structure. Raises maximum HP.', color: '#2ecc71' },
+  { type: 'engine',           name: 'Engine',           desc: 'Boosts acceleration and top speed.', color: '#7fd9ff' },
+  { type: 'shield',           name: 'Shield',           desc: 'Increases max shield and regen.', color: '#9f8cff' },
+  { type: 'coolant',          name: 'Coolant',          desc: 'Reduces overheat drain and speeds recovery.', color: '#7fffd2' },
+  { type: 'basic_cannon',     name: 'Basic Cannon',     desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
+  { type: 'laser_beam',       name: 'Laser Beam',       desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
+  { type: 'void_lance',       name: 'Void Lance',       desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
+  { type: 'resonance_beam',   name: 'Resonance Beam',   desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
+  { type: 'spread_cannon',    name: 'Spread Cannon',    desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
+  { type: 'missile_launcher', name: 'Missile Launcher', desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
+  { type: 'mining_laser',     name: 'Mining Laser',     desc: 'Adds a front-facing mining laser beam.', color: '#7ed6f3' },
+  { type: 'shield_gen',       name: 'Shield Generator', desc: 'Shield-family module.', color: '#9f8cff' },
+  { type: 'heavy_armor',      name: 'Heavy Armor',      desc: 'Hull-family module.', color: '#2ecc71' },
+  { type: 'dark_engine',      name: 'Dark Engine',      desc: 'Engine-family module.', color: '#7fd9ff' },
+  { type: 'placer_laser',     name: 'Placer Laser',     desc: 'Coolant-family module.', color: '#7fffd2' },
 ];
 
 const EDITOR_GRID_SIZE = 11;
@@ -96,12 +105,23 @@ const EDITOR_SLOT_ORDER: EditorSlot[] = [
 
 
 const MODULE_TOOLTIP_DESCS: Record<ShipModuleType, string> = {
-  hull:        'Structure: raises max HP by 34.',
-  engine:      'Boosts acceleration (+14%) and top speed (+12%).',
-  shield:      'Increases max shield (+20) and regen (+1.8/s).',
-  coolant:     'Reduces overheat drain; speeds heat recovery (+30%).',
-  weapon:      'Boosts weapon damage (+8%) and fire rate (+6%).',
+  hull: 'Structure: raises max HP by 34.',
+  engine: 'Boosts acceleration (+14%) and top speed (+12%).',
+  shield: 'Increases max shield (+20) and regen (+1.8/s).',
+  coolant: 'Reduces overheat drain; speeds heat recovery (+30%).',
+  weapon: 'Boosts weapon damage (+8%) and fire rate (+6%).',
   miningLaser: 'Adds a forward-facing mining laser beam.',
+  basic_cannon: 'Weapon-family module from Basic Cannon.',
+  laser_beam: 'Weapon-family module from Laser Beam.',
+  shield_gen: 'Shield-family module from Shield Generator.',
+  heavy_armor: 'Hull-family module from Heavy Armor.',
+  dark_engine: 'Engine-family module from Dark Engine.',
+  mining_laser: 'Mining-laser-family module from Mining Laser.',
+  void_lance: 'Weapon-family module from Void Lance.',
+  resonance_beam: 'Weapon-family module from Resonance Beam.',
+  placer_laser: 'Coolant-family module from Placer Laser.',
+  spread_cannon: 'Weapon-family module from Spread Cannon.',
+  missile_launcher: 'Weapon-family module from Missile Launcher.',
 };
 const MODULE_CORE_DESC = 'Ship core. Nanobots: heals nearest modules at 10 HP/s outward.';
 const TOOLTIP_CURSOR_OFFSET = 14; // pixels from cursor to tooltip edge
@@ -109,7 +129,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 13;
+const BUILD_NUMBER = 14;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -789,8 +809,8 @@ class Game {
   private _countsFromSlots(
     slots: Array<{ row: number; col: number; type: ShipModuleType }>,
   ): ShipModules {
-    const out: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0, miningLaser: 0 };
-    for (const s of slots) out[s.type] += 1;
+    const out: ShipModules = { ...EMPTY_SHIP_MODULES };
+    for (const s of slots) out[SHIP_MODULE_FAMILY_BY_TYPE[s.type]] += 1;
     if (out.hull < 1) out.hull = 1;
     return out;
   }
@@ -803,7 +823,7 @@ class Game {
     // Update palette items: count badge, tier badge, upgrade hint, greyed-out state
     for (const mod of MODULE_EDITOR_CONFIG) {
       const owned  = this.player.getModuleCount(mod.type);
-      const placed = counts[mod.type];
+      const placed = (this._pendingModuleSlots ?? []).filter(s => s.type === mod.type).length;
       const tier   = this.player.getModuleTier(mod.type);
       const upgradeCost = this.player.getUpgradeCost(mod.type);
 
@@ -837,7 +857,7 @@ class Game {
 
       // Legacy count display (may not exist)
       const legacyCountEl = document.getElementById(`module-count-${mod.type}`);
-      if (legacyCountEl) legacyCountEl.textContent = String(counts[mod.type]);
+      if (legacyCountEl) legacyCountEl.textContent = String((this._pendingModuleSlots ?? []).filter(s => s.type === mod.type).length);
     }
 
     this._renderPendingShipGrid();
@@ -1031,9 +1051,12 @@ class Game {
         if (htmlCell.dataset.locked === 'true') htmlCell.textContent = 'CORE';
         continue;
       }
-      htmlCell.classList.add('filled', moduleType);
+      htmlCell.classList.add('filled', SHIP_MODULE_FAMILY_BY_TYPE[moduleType]);
       const MODULE_LABELS: Record<ShipModuleType, string> = {
         hull: 'H', engine: 'E', shield: 'S', coolant: 'C', weapon: 'W', miningLaser: 'ML',
+        basic_cannon: 'BC', laser_beam: 'LB', shield_gen: 'SG', heavy_armor: 'HA', dark_engine: 'DE',
+        mining_laser: 'ML', void_lance: 'VL', resonance_beam: 'RB', placer_laser: 'PL',
+        spread_cannon: 'SC', missile_launcher: 'MS',
       };
       htmlCell.textContent = MODULE_LABELS[moduleType] ?? moduleType[0].toUpperCase();
       htmlCell.draggable = true;

@@ -2,7 +2,7 @@ import {
   Vec2, add, scale, normalize, sub, len, fromAngle, perpCW,
   InventoryItem, createMaterialItem, Material, TOOLBAR_ITEM_DEFS, ToolbarItemDef,
   ShipModuleType, ShipModules, CraftingRecipe, ResourceStack,
-  UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST,
+  UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, SHIP_MODULE_TYPES,
 } from './types';
 import { InputManager }  from './input';
 import { Camera }        from './camera';
@@ -68,7 +68,7 @@ const NANOBOT_REPAIR_RATE = 10; // HP per second healed by core nanobots
 const NANOBOT_REPAIR_EPSILON = 1e-6; // Floating-point threshold for nanobot repair loop
 /** Fraction of crafting recipe inputs refunded when recycling a module (25%, rounded down). */
 export const RECYCLE_REFUND_RATE = 0.25;
-const MODULE_HP_BY_TYPE: Record<ShipModuleType, number> = {
+const MODULE_HP_BY_FAMILY: Record<keyof ShipModules, number> = {
   hull: 34,
   engine: 24,
   shield: 22,
@@ -143,6 +143,14 @@ export class Player {
     weapon: 0,
     miningLaser: 1,
   };
+  private moduleFamilyTierWeight: ShipModules = {
+    hull: 12,
+    engine: 2,
+    shield: 2,
+    coolant: 1,
+    weapon: 0,
+    miningLaser: 1,
+  };
   private playerModules: PlayerModule[] = [];
   /**
    * Explicit per-slot layout set from the ship editor.  Each entry is in
@@ -162,9 +170,9 @@ export class Player {
    * Upgrade tier per module type (1 = base, 2 = Tier II, …, 10 = Tier X).
    * Tier N multiplies each module's stat contribution by 2^(N-1).
    */
-  readonly moduleTiers: Record<ShipModuleType, number> = {
-    hull: 1, engine: 1, shield: 1, coolant: 1, weapon: 1, miningLaser: 1,
-  };
+  readonly moduleTiers: Record<ShipModuleType, number> = Object.fromEntries(
+    SHIP_MODULE_TYPES.map((type) => [type, 1]),
+  ) as Record<ShipModuleType, number>;
 
   constructor(
     private readonly input:    InputManager,
@@ -185,34 +193,34 @@ export class Player {
   get moduleCounts(): Readonly<ShipModules> { return this.modules; }
 
   get accelerationMultiplier(): number {
-    return 1 + this.modules.engine * 0.14 * this._tierMult('engine');
+    return 1 + this.moduleFamilyTierWeight.engine * 0.14;
   }
 
   get topSpeedMultiplier(): number {
-    return 1 + this.modules.engine * 0.12 * this._tierMult('engine');
+    return 1 + this.moduleFamilyTierWeight.engine * 0.12;
   }
 
   get overheatDrainMultiplier(): number {
-    return Math.max(0.35, 1 - this.modules.coolant * 0.12 * this._tierMult('coolant'));
+    return Math.max(0.35, 1 - this.moduleFamilyTierWeight.coolant * 0.12);
   }
 
   get overheatRechargeMultiplier(): number {
-    return 1 + this.modules.coolant * 0.3 * this._tierMult('coolant');
+    return 1 + this.moduleFamilyTierWeight.coolant * 0.3;
   }
 
   /** Weapon damage multiplier from weapon modules (+8% per module, scaled by tier). */
   get weaponDamageMultiplier(): number {
-    return 1 + this.modules.weapon * 0.08 * this._tierMult('weapon');
+    return 1 + this.moduleFamilyTierWeight.weapon * 0.08;
   }
 
   /** Weapon fire rate multiplier from weapon modules (+6% per module, scaled by tier). */
   get weaponFireRateMultiplier(): number {
-    return 1 + this.modules.weapon * 0.06 * this._tierMult('weapon');
+    return 1 + this.moduleFamilyTierWeight.weapon * 0.06;
   }
 
-  /** Mining laser damage multiplier from miningLaser tier. */
+  /** Mining laser damage multiplier from mining-laser family tier weight. */
   get miningLaserDamageMultiplier(): number {
-    return this._tierMult('miningLaser');
+    return Math.max(1, this.moduleFamilyTierWeight.miningLaser);
   }
 
   getMuzzleWorldPos(): Vec2 {
@@ -228,7 +236,7 @@ export class Player {
     const B = 7;
     const cosA = Math.cos(this.angle);
     const sinA = Math.sin(this.angle);
-    const slots = this.playerModules.filter(m => m.alive && m.isConnected && m.type === 'miningLaser');
+    const slots = this.playerModules.filter(m => m.alive && m.isConnected && SHIP_MODULE_FAMILY_BY_TYPE[m.type] === 'miningLaser');
     return slots.map(({ col, row }) => {
       const lx = col * B;
       const ly = row * B;
@@ -259,7 +267,7 @@ export class Player {
   }
 
   addModule(type: ShipModuleType): void {
-    this.modules[type] += 1;
+    this.modules[SHIP_MODULE_FAMILY_BY_TYPE[type]] += 1;
     this._rebuildPlayerModules();
     this._recalculateShipStats();
   }
@@ -284,8 +292,8 @@ export class Player {
    */
   setModuleLayout(slots: Array<{ type: ShipModuleType; col: number; row: number }>): void {
     this._moduleSlots = slots.length > 0 ? [...slots] : null;
-    const counts: ShipModules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0, miningLaser: 0 };
-    for (const s of slots) counts[s.type] += 1;
+    const counts: ShipModules = { ...EMPTY_SHIP_MODULES };
+    for (const s of slots) counts[SHIP_MODULE_FAMILY_BY_TYPE[s.type]] += 1;
     this.setModules(counts);
   }
 
@@ -307,15 +315,16 @@ export class Player {
     add(this.modules.engine,      ENGINE_MODULE_SLOTS,       'engine');
     add(this.modules.shield,      SHIELD_MODULE_SLOTS,       'shield');
     add(this.modules.coolant,     COOLANT_MODULE_SLOTS,      'coolant');
-    add(this.modules.weapon,      WEAPON_MODULE_SLOTS,       'weapon');
-    add(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS, 'miningLaser');
+    add(this.modules.weapon,      WEAPON_MODULE_SLOTS,       'basic_cannon');
+    add(this.modules.miningLaser, MINING_LASER_MODULE_SLOTS, 'mining_laser');
     return result;
   }
 
   removeModule(type: ShipModuleType): boolean {
-    const minForType = type === 'hull' ? 4 : 0;
-    if (this.modules[type] <= minForType) return false;
-    this.modules[type] -= 1;
+    const family = SHIP_MODULE_FAMILY_BY_TYPE[type];
+    const minForFamily = family === 'hull' ? 4 : 0;
+    if (this.modules[family] <= minForFamily) return false;
+    this.modules[family] -= 1;
     this._rebuildPlayerModules();
     this._recalculateShipStats();
     return true;
@@ -436,13 +445,16 @@ export class Player {
     const shieldRatio = this.maxShield > 0 ? this.shield / this.maxShield : 1;
 
     const connected = this.playerModules.filter(m => m.alive && m.isConnected);
-    this.modules = { hull: 0, engine: 0, shield: 0, coolant: 0, weapon: 0, miningLaser: 0 };
+    this.modules = { ...EMPTY_SHIP_MODULES };
+    this.moduleFamilyTierWeight = { ...EMPTY_SHIP_MODULES };
     this.maxHp = 0;
     this.hp = 0;
     this.maxCoreHp = CORE_HP_BASE;
     this.coreHp = 0;
     for (const module of connected) {
-      this.modules[module.type] += 1;
+      const family = SHIP_MODULE_FAMILY_BY_TYPE[module.type];
+      this.modules[family] += 1;
+      this.moduleFamilyTierWeight[family] += this._tierMult(module.type);
       if (module.isCore) {
         this.maxCoreHp = module.maxHp;
         this.coreHp = Math.min(module.hp, module.maxHp);
@@ -452,9 +464,8 @@ export class Player {
       }
     }
 
-    const shieldTierMult = this._tierMult('shield');
-    this.maxShield = 10 + this.modules.shield * 20 * shieldTierMult + this.levelShieldBonus;
-    this.shieldRegen = 2 + this.modules.shield * 1.8 * shieldTierMult;
+    this.maxShield = 10 + this.moduleFamilyTierWeight.shield * 20 + this.levelShieldBonus;
+    this.shieldRegen = 2 + this.moduleFamilyTierWeight.shield * 1.8;
 
     if (this.hasHeavyArmor) this.maxShield += 25;
     this.shield = Math.max(0, Math.min(this.maxShield, this.maxShield * shieldRatio));
@@ -465,7 +476,8 @@ export class Player {
     this.playerModules = slots.map(slot => {
       const isCore = slot.type === 'hull' && slot.col === 0 && slot.row === 0;
       const tierMult = isCore ? 1 : this._tierMult(slot.type);
-      const maxHp = isCore ? CORE_HP_BASE : Math.round(MODULE_HP_BY_TYPE[slot.type] * tierMult);
+      const family = SHIP_MODULE_FAMILY_BY_TYPE[slot.type];
+      const maxHp = isCore ? CORE_HP_BASE : Math.round(MODULE_HP_BY_FAMILY[family] * tierMult);
       return {
         type: slot.type,
         col: slot.col,
@@ -978,8 +990,20 @@ export class Player {
       case 'engine':      return '#7fd9ff';
       case 'shield':      return '#9f8cff';
       case 'coolant':     return '#7fffd2';
-      case 'weapon':      return '#ff4444';
+      case 'basic_cannon':
+      case 'laser_beam':
+      case 'void_lance':
+      case 'resonance_beam':
+      case 'spread_cannon':
+      case 'missile_launcher': return '#ff4444';
+      case 'mining_laser': return '#7ed6f3';
+      case 'heavy_armor': return '#2ecc71';
+      case 'dark_engine': return '#7fd9ff';
+      case 'shield_gen': return '#9f8cff';
+      case 'placer_laser': return '#7fffd2';
+      case 'weapon': return '#ff4444';
       case 'miningLaser': return '#7ed6f3';
     }
+    return '#ffffff';
   }
 }

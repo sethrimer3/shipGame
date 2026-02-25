@@ -1281,14 +1281,8 @@ class Game {
     // ── Sun ray-tracing / shadow overlay (screen-space, after camera) ─────
     if (this.player.alive) {
       const occluders = this.world.getShadowOccluders(this.camera.position);
-      // Add player as occluder
-      const pr = this.player.radius;
-      occluders.push({ verts: [
-        { x: this.player.pos.x - pr, y: this.player.pos.y - pr },
-        { x: this.player.pos.x + pr, y: this.player.pos.y - pr },
-        { x: this.player.pos.x + pr, y: this.player.pos.y + pr },
-        { x: this.player.pos.x - pr, y: this.player.pos.y + pr },
-      ] as Vec2[] });
+      // Add player ship modules as occluders
+      for (const occ of this.player.getModuleShadowOccluders()) occluders.push(occ);
       this.sunRenderer.drawSunRays(
         ctx,
         { x: 0, y: 0 },

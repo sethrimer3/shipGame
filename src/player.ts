@@ -231,6 +231,31 @@ export class Player {
     };
   }
 
+  /** Returns per-module world-space quad occluders for shadow casting. */
+  getModuleShadowOccluders(): { verts: Vec2[] }[] {
+    const B    = 7;
+    const cosA = Math.cos(this.angle);
+    const sinA = Math.sin(this.angle);
+    const half = B / 2;
+    const hc   = half * cosA;
+    const hs   = half * sinA;
+    const result: { verts: Vec2[] }[] = [];
+    for (const m of this.playerModules) {
+      if (!m.alive || !m.isConnected) continue;
+      const lx   = m.col * B;
+      const ly   = m.row * B;
+      const cx_w = this.pos.x + lx * cosA - ly * sinA;
+      const cy_w = this.pos.y + lx * sinA + ly * cosA;
+      result.push({ verts: [
+        { x: cx_w - hc + hs, y: cy_w - hs - hc },
+        { x: cx_w + hc + hs, y: cy_w + hs - hc },
+        { x: cx_w + hc - hs, y: cy_w + hs + hc },
+        { x: cx_w - hc - hs, y: cy_w - hs + hc },
+      ] });
+    }
+    return result;
+  }
+
   /** Returns the world-space positions of each mining laser module (nose-mounted). */
   getMiningLaserWorldPositions(): Vec2[] {
     const B = 7;

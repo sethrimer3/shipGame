@@ -1245,7 +1245,7 @@ export class World {
     return { enemies, asteroids, pickups: pickupPos, planets };
   }
 
-  /** Returns AABB occluder quads for all active shadow-casting entities. */
+  /** Returns per-module occluder quads for all active shadow-casting entities. */
   getShadowOccluders(camPos: Vec2): { verts: Vec2[] }[] {
     const aabb = (l: number, t: number, r: number, b: number) => ({
       verts: [
@@ -1267,13 +1267,11 @@ export class World {
       }
       for (const enemy of chunk.enemies) {
         if (!enemy.alive) continue;
-        const r = enemy.radius;
-        result.push(aabb(enemy.pos.x - r, enemy.pos.y - r, enemy.pos.x + r, enemy.pos.y + r));
+        for (const occ of enemy.getModuleShadowOccluders()) result.push(occ);
       }
       for (const ms of chunk.motherships) {
         if (!ms.alive) continue;
-        const r = ms.radius;
-        result.push(aabb(ms.pos.x - r, ms.pos.y - r, ms.pos.x + r, ms.pos.y + r));
+        for (const occ of ms.getModuleShadowOccluders()) result.push(occ);
       }
     }
     for (const p of this.pickups) {

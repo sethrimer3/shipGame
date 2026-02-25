@@ -43,6 +43,14 @@ export class Toolbar {
 
   getSlots(): readonly ToolbarSlot[] { return this.slots; }
 
+  /** Clear all slots and reset selection to slot 1. */
+  reset(): void {
+    for (let i = 0; i < this.slots.length; i++) {
+      this.slots[i] = { item: null, count: 0 };
+    }
+    this._selected = 0;
+  }
+
   /** Render the toolbar into the DOM toolbar element. */
   renderDOM(): void {
     const container = document.getElementById('toolbar');

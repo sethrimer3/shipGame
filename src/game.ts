@@ -9,7 +9,7 @@ import { Projectile }    from './projectile';
 import { Particle, updateParticle, drawParticle, FloatingText, updateFloatingText, drawFloatingText } from './particle';
 import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
-import { len, Material, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE } from './types';
+import { len, Material, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -129,7 +129,22 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 18;
+const BUILD_NUMBER = 19;
+
+const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
+  { type: 'miningLaser', col:  2, row:  0 },
+  { type: 'hull',        col:  1, row: -1 },
+  { type: 'hull',        col:  1, row:  0 },
+  { type: 'hull',        col:  1, row:  1 },
+  { type: 'hull',        col:  0, row: -1 },
+  { type: 'hull',        col:  0, row:  0 },
+  { type: 'hull',        col:  0, row:  1 },
+  { type: 'hull',        col: -1, row: -1 },
+  { type: 'hull',        col: -1, row:  0 },
+  { type: 'hull',        col: -1, row:  1 },
+  { type: 'engine',      col: -2, row: -1 },
+  { type: 'engine',      col: -2, row:  1 },
+];
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -171,6 +186,7 @@ class Game {
   /** Explicit per-cell layout being edited.  Each entry is in editor grid coords (row, col 0-10). */
   private _pendingModuleSlots: Array<{ row: number; col: number; type: ShipModuleType }> | null = null;
   private _savedModuleSlots: Array<{ row: number; col: number; type: ShipModuleType }> = [];
+  private _autoBuildBlueprintSlots: Array<{ row: number; col: number; type: ShipModuleType }> = [];
   private _draggingModuleType: ShipModuleType | null = null;
   private _draggingFromCell: { row: number; col: number } | null = null;
   private _isCraftingPanelOpenFromEditor = false;
@@ -203,29 +219,12 @@ class Game {
 
     this.input   = new InputManager(this.canvas);
     this.player  = new Player(this.input, this.camera);
-    // Set the initial 3×5 ship structure:
-    //   |-|MiningLaser|-|
-    //   |Hull|Hull|Hull|
-    //   |Hull|Core|Hull|   ← Core is the hull block at col=0,row=0 (rendered gold)
-    //   |Hull|Hull|Hull|
-    //   |Engine|-|Engine|
-    this.player.setModuleLayout([
-      { type: 'miningLaser', col:  2, row:  0 },
-      { type: 'hull',        col:  1, row: -1 },
-      { type: 'hull',        col:  1, row:  0 },
-      { type: 'hull',        col:  1, row:  1 },
-      { type: 'hull',        col:  0, row: -1 },
-      { type: 'hull',        col:  0, row:  0 }, // Core (col=0,row=0 → gold highlight)
-      { type: 'hull',        col:  0, row:  1 },
-      { type: 'hull',        col: -1, row: -1 },
-      { type: 'hull',        col: -1, row:  0 },
-      { type: 'hull',        col: -1, row:  1 },
-      { type: 'engine',      col: -2, row: -1 },
-      { type: 'engine',      col: -2, row:  1 },
-    ]);
+    // Set the initial ship structure and spawn in the station core.
+    this.player.setModuleLayout(STARTER_MODULE_LAYOUT);
     // Populate the module palette with the starter ship's modules
     this.player.initStarterPalette();
     this.world   = new World();
+    this.player.pos = this.world.getPlayerSpawnPosition();
     this.toolbar = new Toolbar();
     this.hud     = new HUD();
     this.starfield   = new StarfieldRenderer();
@@ -289,6 +288,7 @@ class Game {
     }
 
     this._initShipEditor();
+    this._autoBuildBlueprintSlots = this._slotsFromPlayer();
 
     // ── Mobile setup ───────────────────────────────────────────────────────
     if (this.input.isMobile) {
@@ -378,7 +378,7 @@ class Game {
 
     if (!this.player.alive) {
       this.camera.updateShake(dt); // let shake decay on the death screen
-      if (this.input.isDown('r')) window.location.reload();
+      if (this.input.isDown('r')) this._resetRunAfterDeath();
       return;
     }
 
@@ -520,6 +520,7 @@ class Game {
 
     // ── World / enemies / collisions ────────────────────────────────
     this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position);
+    this._runAutoCrafting();
 
     // ── Level-up notification ────────────────────────────────────
     if (this.player.leveledUp) {
@@ -591,6 +592,7 @@ class Game {
     }));
     this.player.setModuleLayout(shipSlots);
     this._savedModuleSlots = this._getCurrentShipSlots();
+    this._autoBuildBlueprintSlots = [...this._savedModuleSlots];
     this._pendingModuleSlots = [...this._savedModuleSlots];
   }
 
@@ -1126,6 +1128,87 @@ class Game {
     this._placementBeams.push({ from: muzzle, to: { x: gridPos.x + 10, y: gridPos.y + 10 }, life: 0.09, maxLife: 0.09 });
     this._launchEffects.push({ from: muzzle, to: { x: gridPos.x, y: gridPos.y }, life: 0.12, maxLife: 0.12 });
     return true;
+  }
+
+
+  private _canAutoCraftModuleType(type: ShipModuleType): boolean {
+    const recipe = CRAFTING_RECIPES.find(r => r.moduleType === type);
+    if (!recipe) return false;
+    for (const input of recipe.inputs) {
+      if (this.player.getResource(input.material) < input.quantity) return false;
+    }
+    for (const input of recipe.inputs) this.player.addResource(input.material, -input.quantity);
+    return true;
+  }
+
+  private _runAutoCrafting(): void {
+    if (this._autoBuildBlueprintSlots.length === 0) return;
+    const current = this._slotsFromPlayer();
+    const currentKeySet = new Set(current.map(s => `${s.row},${s.col}`));
+    const missing = this._autoBuildBlueprintSlots
+      .filter(slot => !currentKeySet.has(`${slot.row},${slot.col}`))
+      .sort((a, b) => (Math.abs(a.row - EDITOR_CENTER) + Math.abs(a.col - EDITOR_CENTER)) - (Math.abs(b.row - EDITOR_CENTER) + Math.abs(b.col - EDITOR_CENTER)));
+
+    let changed = false;
+    for (const slot of missing) {
+      const hasNeighbor = current.some(existing =>
+        (Math.abs(existing.row - slot.row) === 1 && existing.col === slot.col)
+        || (Math.abs(existing.col - slot.col) === 1 && existing.row === slot.row));
+      if (!hasNeighbor) continue;
+      if (!this._canAutoCraftModuleType(slot.type)) continue;
+      current.push(slot);
+      currentKeySet.add(`${slot.row},${slot.col}`);
+      changed = true;
+    }
+
+    if (!changed) return;
+
+    const shipSlots = current.map((slot) => ({
+      type: slot.type,
+      col: EDITOR_CENTER - slot.row,
+      row: slot.col - EDITOR_CENTER,
+    }));
+    this.player.setModuleLayout(shipSlots);
+    this._savedModuleSlots = this._getCurrentShipSlots();
+    if (!this._shipEditorOpen) this._pendingModuleSlots = [...this._savedModuleSlots];
+  }
+
+  private _resetRunAfterDeath(): void {
+    const gemCarry = new Map<Material, number>();
+    for (const gem of GEM_MATERIALS) {
+      gemCarry.set(gem, this.player.getResource(gem));
+    }
+
+    this.player.setModuleLayout(STARTER_MODULE_LAYOUT);
+    this.player.initStarterPalette();
+    this.player.pos = this.world.getPlayerSpawnPosition();
+    this.player.vel = { x: 0, y: 0 };
+
+    for (const [mat, item] of this.player.inventory.entries()) {
+      item.quantity = gemCarry.get(mat) ?? 0;
+    }
+
+    this.toolbar.reset();
+    const miningLaser = TOOLBAR_ITEM_DEFS['mining_laser'];
+    this.toolbar.addItem(miningLaser);
+    this.player.equipItem(0, miningLaser);
+    this.toolbar.renderDOM();
+
+    this.projectiles.length = 0;
+    this.particles.length = 0;
+    this.floatingTexts.length = 0;
+    this.world.resetForLoop();
+    this.player.pos = this.world.getPlayerSpawnPosition();
+
+    const starterSlots = this._slotsFromPlayer();
+    this._savedModuleSlots = starterSlots;
+    this._pendingModuleSlots = [...starterSlots];
+
+    this._timeSurvived = 0;
+    this._maxDistFromOrigin = 0;
+    this.gameTime = 0;
+    this.camera.position = { x: this.player.pos.x, y: this.player.pos.y };
+    this.hud.showMessage('Loop reset: only gems carried over. Auto-crafting will rebuild your design.', 3);
   }
 
   private _pauseKeyHeld    = false;

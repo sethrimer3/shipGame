@@ -50,9 +50,20 @@ export interface Particle {
   maxLife:  number;
   alpha:    number;
   shape?:   'circle' | 'square';
+  /** When true, a motion-blur trail is drawn from prevPos to pos. */
+  trail?:   boolean;
+  prevPos?: Vec2;
 }
 
 export function updateParticle(p: Particle, dt: number): void {
+  if (p.trail) {
+    if (!p.prevPos) {
+      p.prevPos = { x: p.pos.x, y: p.pos.y };
+    } else {
+      p.prevPos.x = p.pos.x;
+      p.prevPos.y = p.pos.y;
+    }
+  }
   p.pos.x   += p.vel.x * dt;
   p.pos.y   += p.vel.y * dt;
   // Slow down
@@ -65,6 +76,25 @@ export function updateParticle(p: Particle, dt: number): void {
 export function drawParticle(ctx: CanvasRenderingContext2D, p: Particle): void {
   ctx.globalAlpha = p.alpha;
   ctx.fillStyle = p.color;
+
+  // Motion-blur trail for fast-moving particles
+  if (p.trail && p.prevPos) {
+    const spd = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
+    if (spd > 15) {
+      ctx.save();
+      ctx.globalAlpha = p.alpha * 0.35;
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth   = p.radius * 1.5;
+      ctx.lineCap     = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p.prevPos.x, p.prevPos.y);
+      ctx.lineTo(p.pos.x, p.pos.y);
+      ctx.stroke();
+      ctx.globalAlpha = p.alpha;
+      ctx.restore();
+    }
+  }
+
   if (p.shape === 'square') {
     const s = p.radius * 2;
     ctx.fillRect(p.pos.x - p.radius, p.pos.y - p.radius, s, s);

@@ -129,7 +129,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 20;
+const BUILD_NUMBER = 21;
 
 const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
   { type: 'miningLaser', col:  2, row:  0 },
@@ -1440,7 +1440,20 @@ class Game {
       y: cy + (wp.y - player.pos.y) * scale,
     });
 
-    const { enemies, asteroids, pickups } = this.world.getMinimapData(this.camera.position);
+    const { enemies, asteroids, pickups, planets } = this.world.getMinimapData(this.camera.position);
+
+    // Planets (large circles with cached surface color, drawn first so entities overlay them)
+    for (const planet of planets) {
+      const p         = toMap(planet.pos);
+      const mapRadius = Math.max(4, planet.radius * scale);
+      ctx.fillStyle   = planet.color + '99'; // semi-transparent fill
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, mapRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = planet.color;
+      ctx.lineWidth   = 0.5;
+      ctx.stroke();
+    }
 
     // Asteroids (dim gray squares)
     ctx.fillStyle = 'rgba(160, 160, 160, 0.35)';

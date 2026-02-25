@@ -1,6 +1,6 @@
 import { Vec2, len, dist, Material, MATERIAL_PROPS, pickMaterial, pickGem } from './types';
 import { Asteroid, AsteroidTurret }  from './asteroid';
-import { Planet } from './planet';
+import { Planet, SplashParticleData } from './planet';
 import { Enemy, EnemyModuleFragment } from './enemy';
 import { Drone } from './drone';
 import { Interceptor } from './interceptor';
@@ -54,10 +54,8 @@ const BOMBER_SPAWN_CHANCE      = 0.28; // probability per chunk attempt
 // Planet spawning
 const PLANET_MIN_DIST     = 500;   // minimum world distance for planets
 const PLANET_SPAWN_CHANCE = 0.25;  // probability per chunk attempt
-const PLANET_MIN_RADIUS   = 80;    // minimum planet radius (world units)
-const PLANET_MAX_RADIUS   = 160;   // maximum planet radius (world units)
-/** Disturbance radius applied when a projectile passes near a planet. */
-const PLANET_DISTURB_RADIUS = 70;
+const PLANET_MIN_RADIUS   = 240;   // minimum planet radius (world units) – 3× original
+const PLANET_MAX_RADIUS   = 480;   // maximum planet radius (world units) – 3× original
 
 /** Gravitational acceleration constant for planet attraction: accel = K * radius / d² */
 const PLANET_GRAVITY_STRENGTH = 2000;
@@ -1100,15 +1098,38 @@ export class World {
     }
     this.drones = this.drones.filter(d => d.alive);
 
-    // ── Planet molecule simulation + projectile disturbance ───────
+    // ── Planet molecule simulation + projectile impact ─────────────
     for (const chunk of chunks) {
       for (const planet of chunk.planets) {
         planet.update(dt);
-        // Disturb molecules when a projectile passes close to the planet
+        // Stop projectiles that enter the planet surface; create localized impact
         for (const proj of projectiles) {
           if (!proj.alive) continue;
-          if (dist(proj.pos, planet.pos) < planet.radius + PLANET_DISTURB_RADIUS) {
-            planet.disturb(proj.pos, proj.damage * 4, PLANET_DISTURB_RADIUS);
+          const d = dist(proj.pos, planet.pos);
+          if (d < planet.radius) {
+            // Compute surface entry point in the projectile's direction from center
+            const dx    = proj.pos.x - planet.pos.x;
+            const dy    = proj.pos.y - planet.pos.y;
+            const invD  = d > 0.01 ? 1 / d : 0;
+            const hitPos: Vec2 = {
+              x: planet.pos.x + dx * invD * planet.radius,
+              y: planet.pos.y + dy * invD * planet.radius,
+            };
+            const splashData: SplashParticleData[] = planet.impactAt(hitPos, proj.damage * 3);
+            proj.alive = false;
+            // Spawn splash particles with motion-blur trails
+            for (const sd of splashData) {
+              particles.push({
+                pos:      { x: sd.pos.x, y: sd.pos.y },
+                vel:      { x: sd.vel.x, y: sd.vel.y },
+                color:    sd.color,
+                radius:   1.5 + Math.random() * 2.5,
+                lifetime: 0.7 + Math.random() * 1.1,
+                maxLife:  1.8,
+                alpha:    1,
+                trail:    true,
+              });
+            }
           }
         }
       }
@@ -1333,11 +1354,12 @@ export class World {
     return { x: 0, y: 0 };
   }
 
-  getMinimapData(camPos: Vec2): { enemies: Vec2[]; asteroids: Vec2[]; pickups: Vec2[] } {
+  getMinimapData(camPos: Vec2): { enemies: Vec2[]; asteroids: Vec2[]; pickups: Vec2[]; planets: { pos: Vec2; radius: number; color: string }[] } {
     const chunks    = this._activeChunks(camPos);
     const enemies:   Vec2[] = [];
     const asteroids: Vec2[] = [];
     const pickupPos: Vec2[] = [];
+    const planets:   { pos: Vec2; radius: number; color: string }[] = [];
     for (const chunk of chunks) {
       for (const e  of chunk.enemies)     if (e.alive)    enemies.push({ ...e.pos });
       for (const ms of chunk.motherships) if (ms.alive)   enemies.push({ ...ms.pos });
@@ -1345,10 +1367,11 @@ export class World {
       for (const gs of chunk.gunships)    if (gs.alive)   enemies.push({ ...gs.pos });
       for (const bm of chunk.bombers)     if (bm.alive)   enemies.push({ ...bm.pos });
       for (const a  of chunk.asteroids)   if (a.alive)    asteroids.push({ ...a.centre });
+      for (const p  of chunk.planets) planets.push({ pos: { ...p.pos }, radius: p.radius, color: p.minimapColor });
     }
     for (const d of this.drones) if (d.alive) enemies.push({ ...d.pos });
     for (const p of this.pickups) pickupPos.push({ ...p.pos });
-    return { enemies, asteroids, pickups: pickupPos };
+    return { enemies, asteroids, pickups: pickupPos, planets };
   }
 
   /** Returns AABB occluder quads for all active shadow-casting entities. */

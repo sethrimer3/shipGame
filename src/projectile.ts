@@ -8,6 +8,7 @@ export class Projectile {
   vel:     Vec2;
   alive    = true;
   lifetime = 0;
+  readonly isStationBeam: boolean = false;
 
   constructor(
     pos:   Vec2,
@@ -57,7 +58,8 @@ export class Projectile {
  * line drawn from the spawn point to the current tip position.
  */
 export class LaserBeam extends Projectile {
-  private readonly _origin: Vec2;
+  protected readonly _origin: Vec2;
+  protected readonly beamWidthPx: number;
 
   constructor(
     pos: Vec2,
@@ -65,9 +67,14 @@ export class LaserBeam extends Projectile {
     damage: number,
     color: string,
     owner: ProjectileOwner,
+    speed = 8000,
+    radius = 3,
+    maxLife = 0.3,
+    beamWidthPx = 2,
   ) {
-    super(pos, dir, 8000, damage, 3, color, owner, 0.3);
+    super(pos, dir, speed, damage, radius, color, owner, maxLife);
     this._origin = { ...pos };
+    this.beamWidthPx = beamWidthPx;
   }
 
   override draw(ctx: CanvasRenderingContext2D): void {
@@ -75,7 +82,7 @@ export class LaserBeam extends Projectile {
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = this.color;
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = this.beamWidthPx;
     ctx.shadowColor = this.color;
     ctx.shadowBlur  = 10;
     ctx.beginPath();
@@ -83,6 +90,42 @@ export class LaserBeam extends Projectile {
     ctx.lineTo(this.pos.x, this.pos.y);
     ctx.stroke();
     ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+export class StationBeam extends LaserBeam {
+  override readonly isStationBeam = true;
+
+  constructor(
+    pos: Vec2,
+    dir: Vec2,
+    damage: number,
+  ) {
+    super(pos, dir, damage, '#ffffff', 'player', 9000, 9, 0.18, 12);
+  }
+
+  override draw(ctx: CanvasRenderingContext2D): void {
+    const alpha = Math.max(0, 1 - this.lifetime / this.maxLife);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth   = this.beamWidthPx;
+    ctx.lineCap     = 'round';
+    ctx.shadowColor = 'rgba(255,255,255,0.95)';
+    ctx.shadowBlur  = 18;
+    ctx.beginPath();
+    ctx.moveTo(this._origin.x, this._origin.y);
+    ctx.lineTo(this.pos.x, this.pos.y);
+    ctx.stroke();
+
+    ctx.lineWidth = this.beamWidthPx * 0.45;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(220,240,255,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(this._origin.x, this._origin.y);
+    ctx.lineTo(this.pos.x, this.pos.y);
+    ctx.stroke();
     ctx.restore();
   }
 }

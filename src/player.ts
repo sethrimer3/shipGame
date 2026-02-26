@@ -345,6 +345,17 @@ export class Player {
     return result;
   }
 
+  /** Returns currently alive module slots (used by auto-rebuild for destroyed modules). */
+  getAliveModuleSlots(): Array<{ type: ShipModuleType; col: number; row: number }> {
+    const result: Array<{ type: ShipModuleType; col: number; row: number }> = [];
+    for (let i = 0; i < this.playerModules.length; i++) {
+      const module = this.playerModules[i];
+      if (!module.alive) continue;
+      result.push({ type: module.type, col: module.col, row: module.row });
+    }
+    return result;
+  }
+
   removeModule(type: ShipModuleType): boolean {
     const family = SHIP_MODULE_FAMILY_BY_TYPE[type];
     const minForFamily = family === 'hull' ? 4 : 0;

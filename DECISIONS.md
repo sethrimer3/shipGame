@@ -115,3 +115,10 @@
 - Added non-destructible white center modules in an infinity pattern to visually mark the time-loop theme.
 - Added an **auto-crafting / auto-build** pipeline that preserves the saved ship design blueprint across runs and rebuilds missing modules from the center outward when recipe resources become available.
 - Design choice for consistency/performance: station geometry is deterministic and generated from fixed ring/loop points at reset.
+
+
+## 2026-02-26 — Auto-build now restores destroyed modules from live ship state
+
+- Auto-crafting now computes missing blueprint slots from **alive runtime modules** instead of the static saved layout, so destroyed modules are rebuilt automatically once resources are available.
+- Build priority remains inside-out by orthogonal Manhattan distance from the core, but crafting only occurs on slots that are currently craftable and orthogonally connected to already-built modules.
+- Implementation uses key-set neighbor checks for 4-direction adjacency to keep the per-frame auto-build pass predictable and allocation-light.

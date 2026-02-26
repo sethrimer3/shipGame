@@ -3,6 +3,9 @@ import { Asteroid } from './asteroid';
 
 // ── Physics helpers ──────────────────────────────────────────────────────────
 
+/** Coefficient of restitution for ship–planet surface collisions (low = mostly inelastic). */
+const PLANET_COLLISION_RESTITUTION = 0.25;
+
 /**
  * Returns true when a circle (cx, cy, r) overlaps an axis-aligned rectangle
  * (rx, ry, rw, rh).  Uses the nearest-point-on-rect method.
@@ -245,4 +248,36 @@ export function resolveShipAsteroidCollision(
   shipVel.y      += (j / shipMass) * ny;
   asteroid.vel.x -= (j / astMass)  * nx;
   asteroid.vel.y -= (j / astMass)  * ny;
+}
+
+/**
+ * Resolve a ship vs planet circle collision.
+ * Planets are treated as immovable (infinite mass) bodies.
+ * Mutates ship pos and vel in place.
+ */
+export function resolveShipPlanetCollision(
+  shipPos: Vec2, shipVel: Vec2, shipRadius: number,
+  planetPos: Vec2, planetRadius: number,
+): void {
+  const dx = shipPos.x - planetPos.x;
+  const dy = shipPos.y - planetPos.y;
+  const d  = Math.sqrt(dx * dx + dy * dy);
+  const minDist = shipRadius + planetRadius;
+  if (d >= minDist || d < 0.001) return;
+
+  const nx = dx / d;
+  const ny = dy / d;
+  const overlap = minDist - d;
+
+  // Push ship out; planet is immovable
+  shipPos.x += nx * overlap;
+  shipPos.y += ny * overlap;
+
+  // Bounce with low restitution
+  const vRelNormal = shipVel.x * nx + shipVel.y * ny;
+  if (vRelNormal >= 0) return;
+
+  const e = PLANET_COLLISION_RESTITUTION;
+  shipVel.x += nx * -(1 + e) * vRelNormal;
+  shipVel.y += ny * -(1 + e) * vRelNormal;
 }

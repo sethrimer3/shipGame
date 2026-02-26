@@ -1,6 +1,6 @@
 import { Vec2, len, dist, Material, MATERIAL_PROPS, pickMaterial, pickGem } from './types';
 import { Asteroid, AsteroidTurret }  from './asteroid';
-import { Planet, SplashParticleData } from './planet';
+import { Planet, SplashParticleData, POWDER_SIZE } from './planet';
 import { Enemy, EnemyModuleFragment } from './enemy';
 import { Drone } from './drone';
 import { Interceptor } from './interceptor';
@@ -19,6 +19,7 @@ import {
   segmentRectEntryTime,
   steerShipAroundAsteroids,
   resolveShipAsteroidCollision,
+  resolveShipPlanetCollision,
 } from './physics';
 import { SpaceStation, STATION_RESET_RADIUS_WORLD, STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD } from './station';
 import { GraphicsConfig } from './graphics-settings';
@@ -65,6 +66,19 @@ const PLANET_GRAVITY_STRENGTH = 2000;
 /** Maximum distance (beyond planet surface) within which planetary gravity acts. */
 const PLANET_GRAVITY_RANGE    = 600;
 
+// ── Loose planet particles (water/sand ejected from a planet surface) ─────────
+/** Minimum clearance (world units) added on top of both radii for overlap rejection. */
+const ASTEROID_PLANET_CLEARANCE = 80;
+/** Drag multiplier per frame for loose particles – nearly frictionless in space. */
+const LOOSE_PARTICLE_DRAG = 0.9998;
+/** Max lifetime (seconds) for a loose particle far from all planet cores. */
+const LOOSE_PARTICLE_MAX_LIFE = 25;
+/** Distance beyond the viewport edge beyond which loose particles without nearby planet gravity are despawned immediately. */
+const LOOSE_PARTICLE_OFFSCREEN_MARGIN = 1200;
+/** Speed (world units/s) imparted to a loose particle struck by a projectile. */
+const LOOSE_PARTICLE_HIT_SPEED = 180;
+/** Generous half-viewport size estimate in world units for off-screen culling. */
+const HALF_VIEWPORT_EST_WORLD = 960;
 
 const PICKUP_COLLECT_RADIUS = 40;   // world units for auto-collect
 const PICKUP_SUCTION_RADIUS = 200;  // world units where pickups accelerate toward player
@@ -73,6 +87,17 @@ const PICKUP_HALF_SIZE      = 5;    // half-side of pickup draw rect (world unit
 
 const HEALTH_DROP_CHANCE        = 0.15; // probability of a health pack dropping on enemy kill
 const HEALTH_DROP_XP_MULTIPLIER = 0.3;  // heal amount = 10 + xpValue * this
+
+// ── Loose planet particle (water/sand ejected from a planet surface) ──────────
+interface LoosePlanetParticle {
+  pos:      Vec2;
+  vel:      Vec2;
+  color:    string;
+  /** Half the render size (= POWDER_SIZE * 0.5). */
+  halfSize: number;
+  /** Remaining lifetime; decrements only when far from all alive planet cores. */
+  lifetime: number;
+}
 
 // ── Floating module fragment (detached from a destroyed enemy ship) ──────────
 const FLOATING_MODULE_START_HP    = 40;  // initial HP of a floating module
@@ -174,6 +199,9 @@ export class World {
   /** Detached enemy ship modules drifting in space. */
   floatingModules: FloatingModule[] = [];
 
+  /** Loose planet particles (water/sand) ejected from planet impacts. */
+  looseParticles: LoosePlanetParticle[] = [];
+
   /** Accumulated enemy kills – could be used for score */
   kills = 0;
 
@@ -189,6 +217,7 @@ export class World {
     this.placedBlocks = [];
     this.drones = [];
     this.floatingModules = [];
+    this.looseParticles = [];
     this.kills = 0;
     this.station.reset();
   }
@@ -369,6 +398,24 @@ export class World {
       const py     = baseY + 200 + rng() * (CHUNK_SIZE - 400);
       const radius = PLANET_MIN_RADIUS + Math.floor(rng() * (PLANET_MAX_RADIUS - PLANET_MIN_RADIUS));
       planets.push(new Planet({ x: px, y: py }, radius, rng));
+    }
+
+    // ── Remove asteroids that overlap with any planet ──────────────
+    if (planets.length > 0) {
+      let j = 0;
+      for (let i = 0; i < asteroids.length; i++) {
+        const ast = asteroids[i];
+        let overlaps = false;
+        for (let pi = 0; pi < planets.length; pi++) {
+          const pl = planets[pi];
+          const ddx = ast.centre.x - pl.pos.x;
+          const ddy = ast.centre.y - pl.pos.y;
+          const minSep = ast.radius + pl.radius + ASTEROID_PLANET_CLEARANCE;
+          if (ddx * ddx + ddy * ddy < minSep * minSep) { overlaps = true; break; }
+        }
+        if (!overlaps) asteroids[j++] = ast;
+      }
+      asteroids.length = j;
     }
 
     return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets };
@@ -1051,18 +1098,29 @@ export class World {
           if (hitT === null) continue;
           this._stopProjectileAtTime(proj, hitT);
           const splashData: SplashParticleData[] = planet.impactAt(proj.pos, proj.damage * 3);
-          // Spawn splash particles with motion-blur trails
+          // Loose molecules (water/sand) become gravitationally tracked particles;
+          // non-loose molecules (lava/stone) spawn short-lived visual-only particles.
           for (const sd of splashData) {
-            particles.push({
-              pos:      { x: sd.pos.x, y: sd.pos.y },
-              vel:      { x: sd.vel.x, y: sd.vel.y },
-              color:    sd.color,
-              radius:   1.5 + Math.random() * 2.5,
-              lifetime: 0.7 + Math.random() * 1.1,
-              maxLife:  1.8,
-              alpha:    1,
-              trail:    true,
-            });
+            if (sd.isLoose) {
+              this.looseParticles.push({
+                pos:      { x: sd.pos.x, y: sd.pos.y },
+                vel:      { x: sd.vel.x, y: sd.vel.y },
+                color:    sd.color,
+                halfSize: POWDER_SIZE * 0.5,
+                lifetime: LOOSE_PARTICLE_MAX_LIFE,
+              });
+            } else {
+              particles.push({
+                pos:      { x: sd.pos.x, y: sd.pos.y },
+                vel:      { x: sd.vel.x, y: sd.vel.y },
+                color:    sd.color,
+                radius:   1.5 + Math.random() * 2.5,
+                lifetime: 0.7 + Math.random() * 1.1,
+                maxLife:  1.8,
+                alpha:    1,
+                trail:    true,
+              });
+            }
           }
         }
       }
@@ -1071,6 +1129,7 @@ export class World {
     // ── Planetary gravitational attraction ────────────────────────
     for (const chunk of chunks) {
       for (const planet of chunk.planets) {
+        if (!planet.coreAlive) continue;
         const gravRange = planet.radius + PLANET_GRAVITY_RANGE;
         const applyGravity = (pos: Vec2, vel: Vec2): void => {
           const dx = planet.pos.x - pos.x;
@@ -1091,6 +1150,94 @@ export class World {
           for (const ic of c.interceptors)  { if (ic.alive) applyGravity(ic.pos, ic.vel); }
         }
         for (const drone of this.drones) { if (drone.alive) applyGravity(drone.pos, drone.vel); }
+      }
+    }
+
+    // ── Ship-planet collision resolution ──────────────────────────
+    for (const chunk of chunks) {
+      for (const planet of chunk.planets) {
+        resolveShipPlanetCollision(player.pos, player.vel, player.radius, planet.pos, planet.radius);
+        for (const e  of chunk.enemies)      { if (e.alive)  resolveShipPlanetCollision(e.pos,  e.vel,  e.radius,  planet.pos, planet.radius); }
+        for (const gs of chunk.gunships)     { if (gs.alive) resolveShipPlanetCollision(gs.pos, gs.vel, gs.radius, planet.pos, planet.radius); }
+        for (const bm of chunk.bombers)      { if (bm.alive) resolveShipPlanetCollision(bm.pos, bm.vel, bm.radius, planet.pos, planet.radius); }
+        for (const ic of chunk.interceptors) { if (ic.alive) resolveShipPlanetCollision(ic.pos, ic.vel, ic.radius, planet.pos, planet.radius); }
+        for (const drone of this.drones)     { if (drone.alive) resolveShipPlanetCollision(drone.pos, drone.vel, drone.radius, planet.pos, planet.radius); }
+      }
+    }
+
+    // ── Loose planet particle update ──────────────────────────────
+    {
+      const offscreenLimitSq = (HALF_VIEWPORT_EST_WORLD + LOOSE_PARTICLE_OFFSCREEN_MARGIN) * (HALF_VIEWPORT_EST_WORLD + LOOSE_PARTICLE_OFFSCREEN_MARGIN);
+      let j = 0;
+      for (let i = 0; i < this.looseParticles.length; i++) {
+        const lp = this.looseParticles[i];
+
+        // Apply tiny drag (almost frictionless in space)
+        lp.vel.x *= LOOSE_PARTICLE_DRAG;
+        lp.vel.y *= LOOSE_PARTICLE_DRAG;
+
+        // Apply gravity from every alive-core planet in active chunks
+        let nearPlanet = false;
+        for (const c of chunks) {
+          for (const planet of c.planets) {
+            if (!planet.coreAlive) continue;
+            const ddx = planet.pos.x - lp.pos.x;
+            const ddy = planet.pos.y - lp.pos.y;
+            const d2  = ddx * ddx + ddy * ddy;
+            const d   = Math.sqrt(d2);
+            const gravRange = planet.radius + PLANET_GRAVITY_RANGE;
+            if (d > gravRange) continue;
+            nearPlanet = true;
+            if (d >= lp.halfSize * 2) {
+              const accel = PLANET_GRAVITY_STRENGTH * planet.radius / Math.max(d2, 400);
+              const invD  = 1 / d;
+              lp.vel.x += ddx * invD * accel * dt;
+              lp.vel.y += ddy * invD * accel * dt;
+            }
+          }
+        }
+
+        // Move
+        lp.pos.x += lp.vel.x * dt;
+        lp.pos.y += lp.vel.y * dt;
+
+        // Refresh lifetime when near a planet; decrement when in open space
+        if (nearPlanet) {
+          lp.lifetime = LOOSE_PARTICLE_MAX_LIFE;
+        } else {
+          lp.lifetime -= dt;
+          // Immediate despawn if far off-screen and no planet gravity
+          const ox = lp.pos.x - camPos.x;
+          const oy = lp.pos.y - camPos.y;
+          if (ox * ox + oy * oy > offscreenLimitSq) {
+            continue; // skip = despawn
+          }
+        }
+
+        if (lp.lifetime > 0) {
+          this.looseParticles[j++] = lp;
+        }
+      }
+      this.looseParticles.length = j;
+    }
+
+    // ── Projectile collisions with loose planet particles ─────────
+    for (const proj of projectiles) {
+      if (!proj.alive) continue;
+      for (let i = 0; i < this.looseParticles.length; i++) {
+        const lp = this.looseParticles[i];
+        const dx = lp.pos.x - proj.pos.x;
+        const dy = lp.pos.y - proj.pos.y;
+        const r  = lp.halfSize + proj.radius;
+        if (dx * dx + dy * dy < r * r) {
+          proj.alive = false;
+          // Kick the loose particle away from the projectile impact direction
+          const ang = Math.atan2(dy, dx);
+          lp.vel.x += Math.cos(ang) * LOOSE_PARTICLE_HIT_SPEED;
+          lp.vel.y += Math.sin(ang) * LOOSE_PARTICLE_HIT_SPEED;
+          lp.lifetime = LOOSE_PARTICLE_MAX_LIFE; // reset so it doesn't immediately despawn
+          break;
+        }
       }
     }
 
@@ -1123,6 +1270,25 @@ export class World {
       for (const planet of chunk.planets) {
         planet.draw(ctx, minX, minY, maxX, maxY);
       }
+    }
+
+    // ── Loose planet particles ─────────────────────────────────────
+    {
+      let batchColor = '';
+      for (let i = 0; i < this.looseParticles.length; i++) {
+        const lp = this.looseParticles[i];
+        if (lp.pos.x + lp.halfSize < minX || lp.pos.x - lp.halfSize > maxX ||
+            lp.pos.y + lp.halfSize < minY || lp.pos.y - lp.halfSize > maxY) continue;
+        if (lp.color !== batchColor) {
+          if (batchColor !== '') ctx.fill();
+          batchColor = lp.color;
+          ctx.fillStyle = batchColor;
+          ctx.beginPath();
+        }
+        const sz = lp.halfSize * 2;
+        ctx.rect(lp.pos.x - lp.halfSize, lp.pos.y - lp.halfSize, sz, sz);
+      }
+      if (batchColor !== '') ctx.fill();
     }
 
     // ── Asteroids ──────────────────────────────────────────────────

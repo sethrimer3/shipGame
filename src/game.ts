@@ -131,7 +131,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 26;
+const BUILD_NUMBER = 27;
 
 const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
   { type: 'miningLaser', col:  2, row:  0 },
@@ -1336,10 +1336,13 @@ class Game {
     this.postProcess.draw(ctx, canvas, this._graphicsConfig);
 
     // ── Minimap ────────────────────────────────────────────────────
-    if (this.player.alive) this._drawMinimap(ctx);
+    if (this.player.alive) {
+      const minimapData = this.world.getMinimapData(this.camera.position);
+      this._drawMinimap(ctx, minimapData);
 
-    // ── Off-screen enemy indicators ────────────────────────────────
-    if (this.player.alive) this._drawEnemyIndicators(ctx);
+      // ── Off-screen enemy indicators ──────────────────────────────
+      this._drawEnemyIndicators(ctx, minimapData.enemies);
+    }
 
     // ── Module hover tooltip ────────────────────────────────────────
     if (this.player.alive && !this._paused && !this._shipEditorOpen && !this._settingsOpen) {
@@ -1443,7 +1446,7 @@ class Game {
   }
 
   // ── Minimap ────────────────────────────────────────────────────────────────
-  private _drawMinimap(ctx: CanvasRenderingContext2D): void {
+  private _drawMinimap(ctx: CanvasRenderingContext2D, minimapData: ReturnType<World['getMinimapData']>): void {
     const SIZE   = 150;
     const RANGE  = 2000; // world-unit radius visible on map
     const MARGIN = 14;
@@ -1474,7 +1477,7 @@ class Game {
       y: cy + (wp.y - player.pos.y) * scale,
     });
 
-    const { enemies, asteroids, pickups, planets } = this.world.getMinimapData(this.camera.position);
+    const { enemies, asteroids, pickups, planets } = minimapData;
 
     // Planets (large circles with cached surface color, drawn first so entities overlay them)
     for (const planet of planets) {
@@ -1532,8 +1535,7 @@ class Game {
   }
 
   // ── Off-screen enemy indicators ────────────────────────────────────────────
-  private _drawEnemyIndicators(ctx: CanvasRenderingContext2D): void {
-    const { enemies } = this.world.getMinimapData(this.camera.position);
+  private _drawEnemyIndicators(ctx: CanvasRenderingContext2D, enemies: Vec2[]): void {
     const W = this.canvas.width;
     const H = this.canvas.height;
     const MARGIN = 24;

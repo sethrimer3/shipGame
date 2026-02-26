@@ -1,5 +1,18 @@
 # DECISIONS
 
+## 2026-02-26 — Non-invasive hot-path allocation elimination
+
+### Per-chunk and top-level array compaction (`src/world.ts`)
+- Replaced all 12 `.filter()` calls in `World.update()` with the same in-place compaction pattern already used for `projectiles`, `particles`, and `floatingTexts` in `game.ts` (decision from 2026-02-25).
+- Per-chunk entity arrays (`enemies`, `asteroids`, `motherships`, `turrets`, `interceptors`, `gunships`, `bombers`) and top-level arrays (`drones`, `pickups`, `healthPickups`, `placedBlocks`, `floatingModules`) now use `let j=0; for ... arr[j++]=arr[i]; arr.length=j`.
+- With 49 active chunks and 7 filtered entity types per chunk, this eliminates up to ~340 temporary array allocations per frame in steady-state gameplay.
+
+### Interceptor ram-collision particle spawn (`src/world.ts`)
+- Replaced `particles.push(...Array.from({ length: 14 }, ...))` with an explicit `for` loop of 14 `particles.push(...)` calls. This avoids creating a temporary array and then spread-copying it into `particles`.
+
+### Single `getMinimapData()` call per frame (`src/game.ts`)
+- `_drawMinimap()` and `_drawEnemyIndicators()` each previously called `world.getMinimapData(camPos)` independently. Since both methods are called back-to-back inside `if (this.player.alive)` in `draw()`, the call site now fetches the data once and passes it to both methods as a parameter, halving the minimap-related array allocations per frame.
+
 ## 2026-02-25 — Continued performance optimization
 
 ### `_activeChunks()` per-frame caching (`src/world.ts`)

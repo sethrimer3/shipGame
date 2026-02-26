@@ -131,7 +131,11 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 29;
+const BUILD_NUMBER = 30;
+
+const REBIRTH_FLASH_DURATION_SEC = 0.28;
+const REBIRTH_BUILD_DURATION_SEC = 1.4;
+const REBIRTH_TOTAL_DURATION_SEC = REBIRTH_FLASH_DURATION_SEC + REBIRTH_BUILD_DURATION_SEC;
 
 const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
   { type: 'miningLaser', col:  2, row:  0 },
@@ -147,6 +151,30 @@ const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: num
   { type: 'engine',      col: -2, row: -1 },
   { type: 'engine',      col: -2, row:  1 },
 ];
+
+const CORE_ONLY_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
+  { type: 'hull', col: 0, row: 0 },
+];
+
+const STARTING_MODULE_RESOURCE_COUNTS: Record<ShipModuleType, number> = {
+  hull: 11,
+  engine: 2,
+  shield: 0,
+  coolant: 0,
+  weapon: 0,
+  miningLaser: 1,
+  basic_cannon: 0,
+  laser_beam: 0,
+  shield_gen: 0,
+  heavy_armor: 0,
+  dark_engine: 0,
+  mining_laser: 0,
+  void_lance: 0,
+  resonance_beam: 0,
+  placer_laser: 0,
+  spread_cannon: 0,
+  missile_launcher: 0,
+};
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -210,6 +238,9 @@ class Game {
   private _zoneBannerTimer = 0;
   private _zoneBannerText  = '';
   private _zoneBannerColor = '#fff';
+  private _rebirthTimerSec = 0;
+  private _isRebirthAnimating = false;
+  private _rebirthModuleResources: Record<ShipModuleType, number> = { ...STARTING_MODULE_RESOURCE_COUNTS };
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -405,6 +436,13 @@ class Game {
     if (!this.player.alive) {
       this.camera.updateShake(dt); // let shake decay on the death screen
       if (this.input.isDown('r')) this._resetRunAfterDeath();
+      return;
+    }
+
+    if (this._isRebirthAnimating) {
+      this._updateRebirthAnimation(dt);
+      this.camera.position = { x: this.player.pos.x, y: this.player.pos.y };
+      this.camera.updateShake(dt);
       return;
     }
 
@@ -1172,6 +1210,11 @@ class Game {
 
 
   private _canAutoCraftModuleType(type: ShipModuleType): boolean {
+    if (this._rebirthModuleResources[type] > 0) {
+      this._rebirthModuleResources[type] -= 1;
+      return true;
+    }
+
     const recipe = CRAFTING_RECIPES.find(r => r.moduleType === type);
     if (!recipe) return false;
     for (const input of recipe.inputs) {
@@ -1255,7 +1298,7 @@ class Game {
       gemCarry.set(gem, this.player.getResource(gem));
     }
 
-    this.player.setModuleLayout(STARTER_MODULE_LAYOUT);
+    this.player.setModuleLayout(CORE_ONLY_LAYOUT);
     this.player.initStarterPalette();
     this.player.pos = this.world.getPlayerSpawnPosition();
     this.player.vel = { x: 0, y: 0 };
@@ -1276,15 +1319,28 @@ class Game {
     this.world.resetForLoop();
     this.player.pos = this.world.getPlayerSpawnPosition();
 
-    const starterSlots = this._slotsFromPlayer();
-    this._savedModuleSlots = starterSlots;
-    this._pendingModuleSlots = [...starterSlots];
+    this._savedModuleSlots = [...this._autoBuildBlueprintSlots];
+    this._pendingModuleSlots = [...this._autoBuildBlueprintSlots];
+    this._rebirthModuleResources = { ...STARTING_MODULE_RESOURCE_COUNTS };
+    this._rebirthTimerSec = 0;
+    this._isRebirthAnimating = true;
 
     this._timeSurvived = 0;
     this._maxDistFromOrigin = 0;
     this.gameTime = 0;
     this.camera.position = { x: this.player.pos.x, y: this.player.pos.y };
-    this.hud.showMessage('Loop reset: only gems carried over. Auto-crafting will rebuild your design.', 3);
+    this.hud.showMessage('Rebirth: only gems carried over. Ship reconstruction in progress.', 3);
+  }
+
+  private _updateRebirthAnimation(dt: number): void {
+    this._rebirthTimerSec += dt;
+    if (this._rebirthTimerSec >= REBIRTH_FLASH_DURATION_SEC) {
+      this._runAutoCrafting();
+    }
+    if (this._rebirthTimerSec >= REBIRTH_TOTAL_DURATION_SEC) {
+      this._isRebirthAnimating = false;
+      this._rebirthTimerSec = 0;
+    }
   }
 
   private _pauseKeyHeld    = false;
@@ -1475,9 +1531,52 @@ class Game {
       ctx.fillText(`Kills: ${this.world.kills}   Level: ${this.player.level}`, cx, cy - 10);
       ctx.fillText(`Time: ${timeStr}   Max Dist: ${Math.round(this._maxDistFromOrigin)}`, cx, cy + 22);
 
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.font      = '14px Courier New';
-      ctx.fillText('Press R to restart', cx, cy + 66);
+      const rebirthLabel = this.input.isMobile ? '[Rebirth]' : '[Rebirth (R)]';
+      ctx.font = '14px Courier New';
+      const labelWidth = ctx.measureText(rebirthLabel).width;
+      const buttonWidth = labelWidth + 24;
+      const buttonHeight = 26;
+      const buttonX = cx - buttonWidth / 2;
+      const buttonY = cy + 48;
+
+      ctx.fillStyle = 'rgba(70,160,255,0.20)';
+      ctx.strokeStyle = 'rgba(170,220,255,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+      ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillText(rebirthLabel, cx, buttonY + 17);
+    }
+
+    if (this._isRebirthAnimating) {
+      const t = this._rebirthTimerSec;
+      const flashRatio = Math.max(0, 1 - (t / REBIRTH_FLASH_DURATION_SEC));
+      const pulseRatio = Math.max(0, Math.min(1, (t - REBIRTH_FLASH_DURATION_SEC) / REBIRTH_BUILD_DURATION_SEC));
+      const flashRadius = 12 + flashRatio * 85;
+      const pulseRadius = 18 + pulseRatio * 32;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+
+      if (flashRatio > 0) {
+        const flashGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, flashRadius);
+        flashGradient.addColorStop(0, `rgba(255,255,255,${0.9 * flashRatio})`);
+        flashGradient.addColorStop(0.45, `rgba(170,220,255,${0.55 * flashRatio})`);
+        flashGradient.addColorStop(1, 'rgba(120,180,255,0)');
+        ctx.fillStyle = flashGradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, flashRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = `rgba(170,220,255,${0.5 * (1 - pulseRatio)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, pulseRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     }
   }
 

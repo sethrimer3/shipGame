@@ -40,7 +40,7 @@
 - `src/game.ts`
   - Handles run reset without page reload (`_resetRunAfterDeath`).
   - Preserves only gem inventory on reset and re-initializes starter ship/toolbar state.
-  - Stores a persistent ship blueprint (`_autoBuildBlueprintSlots`) and auto-crafts missing modules in orthogonally connected, inside-out order.
+  - Stores a persistent ship blueprint (`_autoBuildBlueprintSlots`) and auto-crafts missing/destroyed modules in orthogonally connected, inside-out order, prioritizing nearest craftable slots.
 
 ## Updated run flow
 

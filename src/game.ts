@@ -131,7 +131,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 27;
+const BUILD_NUMBER = 28;
 
 const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
   { type: 'miningLaser', col:  2, row:  0 },
@@ -1183,22 +1183,58 @@ class Game {
 
   private _runAutoCrafting(): void {
     if (this._autoBuildBlueprintSlots.length === 0) return;
-    const current = this._slotsFromPlayer();
-    const currentKeySet = new Set(current.map(s => `${s.row},${s.col}`));
-    const missing = this._autoBuildBlueprintSlots
-      .filter(slot => !currentKeySet.has(`${slot.row},${slot.col}`))
-      .sort((a, b) => (Math.abs(a.row - EDITOR_CENTER) + Math.abs(a.col - EDITOR_CENTER)) - (Math.abs(b.row - EDITOR_CENTER) + Math.abs(b.col - EDITOR_CENTER)));
+
+    const aliveShipSlots = this.player.getAliveModuleSlots();
+    const current: Array<{ row: number; col: number; type: ShipModuleType }> = [];
+    const currentKeySet = new Set<string>();
+    for (let i = 0; i < aliveShipSlots.length; i++) {
+      const slot = aliveShipSlots[i];
+      const mapped = {
+        row: EDITOR_CENTER - slot.col,
+        col: slot.row + EDITOR_CENTER,
+        type: slot.type,
+      };
+      current.push(mapped);
+      currentKeySet.add(`${mapped.row},${mapped.col}`);
+    }
+
+    const missing: Array<{ row: number; col: number; type: ShipModuleType; distance: number }> = [];
+    for (let i = 0; i < this._autoBuildBlueprintSlots.length; i++) {
+      const slot = this._autoBuildBlueprintSlots[i];
+      const key = `${slot.row},${slot.col}`;
+      if (currentKeySet.has(key)) continue;
+      missing.push({
+        row: slot.row,
+        col: slot.col,
+        type: slot.type,
+        distance: Math.abs(slot.row - EDITOR_CENTER) + Math.abs(slot.col - EDITOR_CENTER),
+      });
+    }
+
+    missing.sort((a, b) => a.distance - b.distance);
 
     let changed = false;
-    for (const slot of missing) {
-      const hasNeighbor = current.some(existing =>
-        (Math.abs(existing.row - slot.row) === 1 && existing.col === slot.col)
-        || (Math.abs(existing.col - slot.col) === 1 && existing.row === slot.row));
-      if (!hasNeighbor) continue;
-      if (!this._canAutoCraftModuleType(slot.type)) continue;
-      current.push(slot);
-      currentKeySet.add(`${slot.row},${slot.col}`);
-      changed = true;
+    while (true) {
+      let craftedCount = 0;
+      for (let i = 0; i < missing.length; i++) {
+        const slot = missing[i];
+        if (slot.distance < 0) continue;
+
+        const hasNeighbor =
+          currentKeySet.has(`${slot.row - 1},${slot.col}`)
+          || currentKeySet.has(`${slot.row + 1},${slot.col}`)
+          || currentKeySet.has(`${slot.row},${slot.col - 1}`)
+          || currentKeySet.has(`${slot.row},${slot.col + 1}`);
+        if (!hasNeighbor) continue;
+        if (!this._canAutoCraftModuleType(slot.type)) continue;
+
+        current.push({ row: slot.row, col: slot.col, type: slot.type });
+        currentKeySet.add(`${slot.row},${slot.col}`);
+        slot.distance = -1;
+        craftedCount += 1;
+        changed = true;
+      }
+      if (craftedCount === 0) break;
     }
 
     if (!changed) return;

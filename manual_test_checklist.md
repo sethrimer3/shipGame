@@ -11,6 +11,9 @@
 - [ ] Verify white infinity modules are visible at station center and are not destroyed by enemy fire.
 - [ ] Lure enemies toward the station and confirm station turrets automatically fire at them.
 - [ ] Let enemies damage the station modules and confirm modules can be destroyed.
-- [ ] Die, press `R`, and verify station is fully restored.
-- [ ] Before dying, collect both gems and non-gem resources; after restart confirm only gems remain.
+- [ ] Die, use rebirth (`R` on desktop), and verify station is fully restored.
+- [ ] Before dying, collect both gems and non-gem resources; after rebirth confirm only gems remain.
 - [ ] Save a ship layout with crafted modules, die/restart, then verify auto-crafting rebuilds modules from connected inner slots outward as resources are collected.
+
+- [ ] Die and verify the death overlay shows `[Rebirth (R)]` on desktop and `[Rebirth]` on mobile.
+- [ ] Trigger rebirth and verify a flash appears first, then the ship procedurally rebuilds outward from the core.

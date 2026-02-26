@@ -138,3 +138,11 @@
 - Auto-crafting now computes missing blueprint slots from **alive runtime modules** instead of the static saved layout, so destroyed modules are rebuilt automatically once resources are available.
 - Build priority remains inside-out by orthogonal Manhattan distance from the core, but crafting only occurs on slots that are currently craftable and orthogonally connected to already-built modules.
 - Implementation uses key-set neighbor checks for 4-direction adjacency to keep the per-frame auto-build pass predictable and allocation-light.
+
+## 2026-02-26 — Rebirth flow + procedural rebuild animation
+
+- The death-screen restart prompt now uses an explicit rebirth button label: desktop shows `[Rebirth (R)]`, mobile shows `[Rebirth]`.
+- On rebirth, the ship now respawns as core-only and plays a short flash, then runs accelerated auto-build for a brief window to visibly reconstruct the saved blueprint.
+- Rebirth starts with a deterministic per-module resource pool sized to always rebuild the default starter ship (`11 hull`, `2 engine`, `1 miningLaser`), while preserving room for future permanent starting-resource upgrades.
+- Gems still carry over between loops; non-gem inventory still resets.
+

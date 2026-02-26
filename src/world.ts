@@ -15,6 +15,7 @@ import {
   circleVsRect,
   segmentIntersectsRect,
   segmentCircleClosestT,
+  segmentCircleEntryTime,
   segmentRectEntryTime,
   steerShipAroundAsteroids,
   resolveShipAsteroidCollision,
@@ -434,6 +435,28 @@ export class World {
     return this.station.consumeBeamShots();
   }
 
+  private _stopProjectileAtTime(proj: Projectile, hitT: number): void {
+    const clampedT = Math.max(0, Math.min(1, hitT));
+    proj.pos.x = proj.prevPos.x + (proj.pos.x - proj.prevPos.x) * clampedT;
+    proj.pos.y = proj.prevPos.y + (proj.pos.y - proj.prevPos.y) * clampedT;
+    proj.alive = false;
+  }
+
+  private _hitProjectileVsCircle(proj: Projectile, center: Vec2, radius: number): boolean {
+    const hitT = segmentCircleEntryTime(
+      proj.prevPos.x,
+      proj.prevPos.y,
+      proj.pos.x,
+      proj.pos.y,
+      center.x,
+      center.y,
+      radius + proj.radius,
+    );
+    if (hitT === null) return false;
+    this._stopProjectileAtTime(proj, hitT);
+    return true;
+  }
+
   update(
     dt:           number,
     player:       Player,
@@ -568,7 +591,7 @@ export class World {
       for (const enemy of chunk.enemies) {
         for (const proj of projectiles) {
           if (!proj.alive || proj.owner !== 'player') continue;
-          if (dist(proj.pos, enemy.pos) < enemy.radius + proj.radius) {
+          if (this._hitProjectileVsCircle(proj, enemy.pos, enemy.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = enemy.tier.minDist >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
             const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
@@ -627,7 +650,7 @@ export class World {
       // ── Player-projectile collisions ──────────────────────────────
       for (const proj of projectiles) {
         if (!proj.alive || proj.owner !== 'enemy') continue;
-        if (dist(proj.pos, player.pos) < player.radius + proj.radius) {
+        if (this._hitProjectileVsCircle(proj, player.pos, player.radius)) {
           proj.alive = false;
           player.damageModule(proj.pos, proj.damage, particles);
           floatingTexts.push(makeFloatingText(
@@ -699,7 +722,7 @@ export class World {
         if (!turret.alive) continue;
         for (const proj of projectiles) {
           if (!proj.alive || proj.owner !== 'player') continue;
-          if (dist(proj.pos, turret.pos) < turret.radius + proj.radius) {
+          if (this._hitProjectileVsCircle(proj, turret.pos, turret.radius)) {
             proj.alive = false;
             const killed = turret.damage(proj.damage, particles, Math.random);
             if (killed) {
@@ -781,7 +804,7 @@ export class World {
         if (!ic.alive) continue;
         for (const proj of projectiles) {
           if (!proj.alive || proj.owner !== 'player') continue;
-          if (dist(proj.pos, ic.pos) < ic.radius + proj.radius) {
+          if (this._hitProjectileVsCircle(proj, ic.pos, ic.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(ic.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
             const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
@@ -815,7 +838,7 @@ export class World {
         if (!gs.alive) continue;
         for (const proj of projectiles) {
           if (!proj.alive || proj.owner !== 'player') continue;
-          if (dist(proj.pos, gs.pos) < gs.radius + proj.radius) {
+          if (this._hitProjectileVsCircle(proj, gs.pos, gs.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(gs.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
             const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
@@ -854,7 +877,7 @@ export class World {
         if (!bm.alive) continue;
         for (const proj of projectiles) {
           if (!proj.alive || proj.owner !== 'player') continue;
-          if (dist(proj.pos, bm.pos) < bm.radius + proj.radius) {
+          if (this._hitProjectileVsCircle(proj, bm.pos, bm.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(bm.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
             const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
@@ -949,11 +972,20 @@ export class World {
       if (!block.alive) continue;
       for (const proj of projectiles) {
         if (!proj.alive) continue;
-        if (circleVsRect(proj.pos.x, proj.pos.y, proj.radius, block.pos.x, block.pos.y, BLOCK_SIZE, BLOCK_SIZE)) {
-          proj.alive = false;
-          block.hp  -= proj.damage;
-          if (block.hp <= 0) block.alive = false;
-        }
+        const hitT = segmentRectEntryTime(
+          proj.prevPos.x,
+          proj.prevPos.y,
+          proj.pos.x,
+          proj.pos.y,
+          block.pos.x - proj.radius,
+          block.pos.y - proj.radius,
+          BLOCK_SIZE + proj.radius * 2,
+          BLOCK_SIZE + proj.radius * 2,
+        );
+        if (hitT === null) continue;
+        this._stopProjectileAtTime(proj, hitT);
+        block.hp -= proj.damage;
+        if (block.hp <= 0) block.alive = false;
       }
     }
     { let j = 0; for (let i = 0; i < this.placedBlocks.length; i++) { if (this.placedBlocks[i].alive) this.placedBlocks[j++] = this.placedBlocks[i]; } this.placedBlocks.length = j; }
@@ -981,7 +1013,7 @@ export class World {
       if (!drone.alive) continue;
       for (const proj of projectiles) {
         if (!proj.alive || proj.owner !== 'player') continue;
-        if (dist(proj.pos, drone.pos) < drone.radius + proj.radius) {
+        if (this._hitProjectileVsCircle(proj, drone.pos, drone.radius)) {
           proj.alive = false;
           const isSapphireArmoredTarget = len(drone.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
           const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
@@ -1004,34 +1036,33 @@ export class World {
     for (const chunk of chunks) {
       for (const planet of chunk.planets) {
         planet.update(dt, skipPlanetMolecules);
-        // Stop projectiles that enter the planet surface; create localized impact
+        // Stop projectiles at first planet impact; create localized impact
         for (const proj of projectiles) {
           if (!proj.alive) continue;
-          const d = dist(proj.pos, planet.pos);
-          if (d < planet.radius) {
-            // Compute surface entry point in the projectile's direction from center
-            const dx    = proj.pos.x - planet.pos.x;
-            const dy    = proj.pos.y - planet.pos.y;
-            const invD  = d > 0.01 ? 1 / d : 0;
-            const hitPos: Vec2 = {
-              x: planet.pos.x + dx * invD * planet.radius,
-              y: planet.pos.y + dy * invD * planet.radius,
-            };
-            const splashData: SplashParticleData[] = planet.impactAt(hitPos, proj.damage * 3);
-            proj.alive = false;
-            // Spawn splash particles with motion-blur trails
-            for (const sd of splashData) {
-              particles.push({
-                pos:      { x: sd.pos.x, y: sd.pos.y },
-                vel:      { x: sd.vel.x, y: sd.vel.y },
-                color:    sd.color,
-                radius:   1.5 + Math.random() * 2.5,
-                lifetime: 0.7 + Math.random() * 1.1,
-                maxLife:  1.8,
-                alpha:    1,
-                trail:    true,
-              });
-            }
+          const hitT = segmentCircleEntryTime(
+            proj.prevPos.x,
+            proj.prevPos.y,
+            proj.pos.x,
+            proj.pos.y,
+            planet.pos.x,
+            planet.pos.y,
+            planet.radius,
+          );
+          if (hitT === null) continue;
+          this._stopProjectileAtTime(proj, hitT);
+          const splashData: SplashParticleData[] = planet.impactAt(proj.pos, proj.damage * 3);
+          // Spawn splash particles with motion-blur trails
+          for (const sd of splashData) {
+            particles.push({
+              pos:      { x: sd.pos.x, y: sd.pos.y },
+              vel:      { x: sd.vel.x, y: sd.vel.y },
+              color:    sd.color,
+              radius:   1.5 + Math.random() * 2.5,
+              lifetime: 0.7 + Math.random() * 1.1,
+              maxLife:  1.8,
+              alpha:    1,
+              trail:    true,
+            });
           }
         }
       }

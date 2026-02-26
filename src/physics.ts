@@ -81,6 +81,42 @@ export function segmentCircleClosestT(
   return Math.max(0, Math.min(1, t));
 }
 
+/**
+ * Returns earliest normalized entry time t (0..1) where the segment first
+ * intersects a circle, or null when no intersection occurs.
+ */
+export function segmentCircleEntryTime(
+  x1: number, y1: number,
+  x2: number, y2: number,
+  cx: number, cy: number,
+  radius: number,
+): number | null {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const fx = x1 - cx;
+  const fy = y1 - cy;
+  const a = dx * dx + dy * dy;
+
+  // Degenerate segment (no movement this frame): treat as point test.
+  if (a <= 1e-8) {
+    return (fx * fx + fy * fy <= radius * radius) ? 0 : null;
+  }
+
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - radius * radius;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+
+  const sqrtDisc = Math.sqrt(disc);
+  const inv2A = 1 / (2 * a);
+  const t1 = (-b - sqrtDisc) * inv2A;
+  const t2 = (-b + sqrtDisc) * inv2A;
+
+  if (t1 >= 0 && t1 <= 1) return t1;
+  if (t2 >= 0 && t2 <= 1) return t2;
+  return null;
+}
+
 
 export function segmentRectEntryTime(
   x1: number, y1: number,

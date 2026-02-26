@@ -1,5 +1,21 @@
 # DECISIONS
 
+## 2026-02-26 — Planet terrain overhaul + active molecule simulation
+
+### Organic dunes, trough water, and mountain peaks (`src/planet.ts`)
+- Planet terrain now uses deterministic angular terrain samples (`TERRAIN_SAMPLE_COUNT = 192`) generated from the planet RNG seed to build dune-like sand height variation.
+- Water is no longer a full outer shell: shallow water pockets are placed only in local terrain troughs, while mountain bands remain dry.
+- Stone mountains are generated as angular ridge bands that start near the inner strata (`MOUNTAIN_ROOT_RATIO`) and extend toward/above the sand surface into peaks.
+
+### Plants only on exposed sand + square organic growth (`src/planet.ts`)
+- Plants are now seeded only from exposed surface sand molecules (not water, stone, or buried sand).
+- Plant rendering changed from single lines to small square cells with lateral drift and occasional side cells so growth reads as organic vegetation clusters.
+
+### Smaller molecules + event-driven updates (`src/planet.ts`)
+- Reduced `POWDER_SIZE` from 15 to 5 (one-third), increasing visual terrain fidelity.
+- Added active-molecule tracking (`_activeMoleculeIndices` + `_isMoleculeActive`) so only disturbed/impacted molecules are integrated each frame; settled molecules are removed from the active list and skipped entirely until reactivated.
+- Disturbance and impact paths now explicitly reactivate affected molecules.
+
 ## 2026-02-26 — Non-invasive hot-path allocation elimination
 
 ### Per-chunk and top-level array compaction (`src/world.ts`)

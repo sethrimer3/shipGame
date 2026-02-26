@@ -156,6 +156,8 @@ export class Planet {
         });
       }
     }
+    // Pre-sort by color so draw() can batch same-color fillRect calls efficiently.
+    this.molecules.sort((a, b) => (a.color < b.color ? -1 : a.color > b.color ? 1 : 0));
   }
 
   private _generatePlants(rng: () => number): void {
@@ -206,21 +208,27 @@ export class Planet {
   /** Cached color representing the planet's current visual surface state. */
   get minimapColor(): string { return this._minimapColor; }
 
-  update(dt: number): void {
-    const damp = Math.pow(VELOCITY_DAMP, dt * 60);
-    for (const m of this.molecules) {
-      if (!m.alive) continue;
-      // Spring force back toward rest position (simulates planetary gravity)
-      const dx = m.restPos.x - m.pos.x;
-      const dy = m.restPos.y - m.pos.y;
-      m.vel.x += dx * GRAVITY_K * dt;
-      m.vel.y += dy * GRAVITY_K * dt;
-      // Damping so molecules settle rather than oscillating forever
-      m.vel.x *= damp;
-      m.vel.y *= damp;
-      // Integrate
-      m.pos.x += m.vel.x * dt;
-      m.pos.y += m.vel.y * dt;
+  update(dt: number, skipMolecules = false): void {
+    if (!skipMolecules) {
+      const damp = Math.pow(VELOCITY_DAMP, dt * 60);
+      for (const m of this.molecules) {
+        if (!m.alive) continue;
+        // Spring force back toward rest position (simulates planetary gravity)
+        const dx = m.restPos.x - m.pos.x;
+        const dy = m.restPos.y - m.pos.y;
+        // Skip spring integration for molecules that have settled at rest.
+        const dispSq = dx * dx + dy * dy;
+        const velSq  = m.vel.x * m.vel.x + m.vel.y * m.vel.y;
+        if (dispSq < 0.01 && velSq < 0.25) continue;
+        m.vel.x += dx * GRAVITY_K * dt;
+        m.vel.y += dy * GRAVITY_K * dt;
+        // Damping so molecules settle rather than oscillating forever
+        m.vel.x *= damp;
+        m.vel.y *= damp;
+        // Integrate
+        m.pos.x += m.vel.x * dt;
+        m.pos.y += m.vel.y * dt;
+      }
     }
 
     // Update plants (growth and burning)
@@ -346,6 +354,9 @@ export class Planet {
     }
 
     const half = POWDER_SIZE * 0.5;
+    // Molecules are pre-sorted by color at construction, so we can batch consecutive
+    // same-color molecules into one beginPath()+fill() call instead of a fillRect per molecule.
+    let batchColor = '';
     for (const m of this.molecules) {
       if (!m.alive) continue;
       // Fine-grained cull
@@ -353,9 +364,15 @@ export class Planet {
         m.pos.x + half < minX || m.pos.x - half > maxX ||
         m.pos.y + half < minY || m.pos.y - half > maxY
       ) continue;
-      ctx.fillStyle = m.color;
-      ctx.fillRect(m.pos.x - half, m.pos.y - half, POWDER_SIZE, POWDER_SIZE);
+      if (m.color !== batchColor) {
+        if (batchColor !== '') ctx.fill();
+        batchColor = m.color;
+        ctx.fillStyle = batchColor;
+        ctx.beginPath();
+      }
+      ctx.rect(m.pos.x - half, m.pos.y - half, POWDER_SIZE, POWDER_SIZE);
     }
+    if (batchColor !== '') ctx.fill();
 
     // Draw plants growing radially outward from the planet surface
     ctx.save();

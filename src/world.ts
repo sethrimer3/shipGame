@@ -20,6 +20,7 @@ import {
   resolveShipAsteroidCollision,
 } from './physics';
 import { SpaceStation, STATION_RESET_RADIUS_WORLD, STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD } from './station';
+import { GraphicsConfig } from './graphics-settings';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const CHUNK_SIZE      = 1200;   // world units per chunk
@@ -153,6 +154,10 @@ export class World {
 
   private readonly station = new SpaceStation();
 
+  /** Cache: last computed active-chunk list, keyed by chunk-grid coords string. */
+  private _cachedChunkKey = '';
+  private _cachedChunks:   Chunk[] = [];
+
   /** Floating resource pickups dropped by enemies and asteroid debris. */
   pickups: ResourcePickup[] = [];
 
@@ -175,6 +180,8 @@ export class World {
 
   resetForLoop(): void {
     this.chunks.clear();
+    this._cachedChunkKey = '';  // invalidate chunk cache
+    this._cachedChunks   = [];
     this.debris.length = 0;
     this.pickups = [];
     this.healthPickups = [];
@@ -403,16 +410,23 @@ export class World {
     return this.chunks.get(key)!;
   }
 
-  /** Returns all chunks within ACTIVE_RADIUS of the camera position. */
+  /** Returns all chunks within ACTIVE_RADIUS of the camera position.
+   *  Result is cached by chunk-grid key — no reallocation when the camera hasn't
+   *  crossed a chunk boundary since the last call.
+   */
   private _activeChunks(camPos: Vec2): Chunk[] {
     const cx0 = Math.floor(camPos.x / CHUNK_SIZE);
     const cy0 = Math.floor(camPos.y / CHUNK_SIZE);
+    const key = `${cx0},${cy0}`;
+    if (key === this._cachedChunkKey) return this._cachedChunks;
+    this._cachedChunkKey = key;
     const result: Chunk[] = [];
     for (let dx = -ACTIVE_RADIUS; dx <= ACTIVE_RADIUS; dx++) {
       for (let dy = -ACTIVE_RADIUS; dy <= ACTIVE_RADIUS; dy++) {
         result.push(this._getChunk(cx0 + dx, cy0 + dy));
       }
     }
+    this._cachedChunks = result;
     return result;
   }
 
@@ -427,8 +441,10 @@ export class World {
     particles:    Particle[],
     floatingTexts: FloatingText[],
     camPos:       Vec2,
+    config:       GraphicsConfig,
   ): void {
     const chunks = this._activeChunks(camPos);
+    const skipPlanetMolecules = !config.planetMoleculeSimulation;
 
     for (const chunk of chunks) {
       // ── Enemy AI ──────────────────────────────────────────────────
@@ -987,7 +1003,7 @@ export class World {
     // ── Planet molecule simulation + projectile impact ─────────────
     for (const chunk of chunks) {
       for (const planet of chunk.planets) {
-        planet.update(dt);
+        planet.update(dt, skipPlanetMolecules);
         // Stop projectiles that enter the planet surface; create localized impact
         for (const proj of projectiles) {
           if (!proj.alive) continue;

@@ -1,4 +1,5 @@
 import { Vec2 } from './types';
+import { GraphicsConfig } from './graphics-settings';
 
 const STAR_WRAP_SIZE = 4000;
 
@@ -138,6 +139,7 @@ export class StarfieldRenderer {
         cameraPos: Vec2,
         screenWidth: number,
         screenHeight: number,
+        config: GraphicsConfig,
     ): void {
         const centerX = screenWidth * 0.5;
         const centerY = screenHeight * 0.5;
@@ -158,7 +160,9 @@ export class StarfieldRenderer {
             const depthSizeMultiplier = 0.84 + depthScale * 0.62;
             const haloAlphaMultiplier = 0.56 + depthScale * 0.44;
 
-            for (const star of layer.stars) {
+            const drawCount = Math.ceil(layer.stars.length * config.starCountMultiplier);
+            for (let si = 0; si < drawCount; si++) {
+                const star = layer.stars[si];
                 const screenX = centerX + (star.x - parallaxX);
                 const screenY = centerY + (star.y - parallaxY);
                 const wrappedX = ((screenX + centerX) % wrapSpanX) - centerX;
@@ -177,14 +181,16 @@ export class StarfieldRenderer {
                 const cacheIndex = star.colorIndex;
 
                 const haloRadiusPx = renderedSizePx * star.haloScale;
-                ctx.globalAlpha = alpha * haloAlphaMultiplier;
-                ctx.drawImage(
-                    this.reworkedStarHaloCacheByPalette[cacheIndex],
-                    wrappedX - haloRadiusPx,
-                    wrappedY - haloRadiusPx,
-                    haloRadiusPx * 2,
-                    haloRadiusPx * 2
-                );
+                if (config.starHalos) {
+                    ctx.globalAlpha = alpha * haloAlphaMultiplier;
+                    ctx.drawImage(
+                        this.reworkedStarHaloCacheByPalette[cacheIndex],
+                        wrappedX - haloRadiusPx,
+                        wrappedY - haloRadiusPx,
+                        haloRadiusPx * 2,
+                        haloRadiusPx * 2
+                    );
+                }
 
                 const coreRadiusPx = renderedSizePx * 0.95;
                 ctx.globalAlpha = alpha;
@@ -196,7 +202,7 @@ export class StarfieldRenderer {
                     coreRadiusPx * 2
                 );
 
-                if (star.hasChromaticAberration) {
+                if (star.hasChromaticAberration && config.starChromaticAberration) {
                     this.renderChromaticAberration(
                         ctx, wrappedX, wrappedY, renderedSizePx, alpha * 0.17, star.colorRgb
                     );

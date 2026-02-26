@@ -9,6 +9,8 @@ import { Projectile }    from './projectile';
 import { Particle, updateParticle, drawParticle, FloatingText, updateFloatingText, drawFloatingText } from './particle';
 import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
+import { PostProcessRenderer } from './post-process';
+import { GraphicsConfig, GraphicsQuality, QUALITY_PRESETS } from './graphics-settings';
 import { len, Material, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS } from './types';
 
 /** All material types in priority order for the placer laser. */
@@ -129,7 +131,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 24;
+const BUILD_NUMBER = 26;
 
 const STARTER_MODULE_LAYOUT: Array<{ type: ShipModuleType; col: number; row: number }> = [
   { type: 'miningLaser', col:  2, row:  0 },
@@ -159,6 +161,9 @@ class Game {
   private readonly hud:      HUD;
   private readonly starfield: StarfieldRenderer;
   private readonly sunRenderer: SunRenderer;
+  private readonly postProcess: PostProcessRenderer;
+
+  private _graphicsConfig: GraphicsConfig = QUALITY_PRESETS['high'];
 
   private readonly projectiles: Projectile[] = [];
   private readonly particles:   Particle[]   = [];
@@ -229,6 +234,7 @@ class Game {
     this.hud     = new HUD();
     this.starfield   = new StarfieldRenderer();
     this.sunRenderer = new SunRenderer();
+    this.postProcess = new PostProcessRenderer();
 
     this.crafting = new CraftingSystem(
       this.player,
@@ -287,6 +293,15 @@ class Game {
       });
     }
 
+    // Wire up graphics quality buttons
+    this._applyGraphicsQuality(this._graphicsConfig.quality);
+    for (const q of ['low', 'medium', 'high'] as GraphicsQuality[]) {
+      const btn = document.getElementById(`setting-quality-${q}`);
+      if (btn) {
+        btn.addEventListener('click', () => this._applyGraphicsQuality(q));
+      }
+    }
+
     this._initShipEditor();
     this._autoBuildBlueprintSlots = this._slotsFromPlayer();
 
@@ -332,6 +347,17 @@ class Game {
     this.canvas.height = this.canvas.clientHeight || window.innerHeight;
     this.camera.resize(this.canvas.width, this.canvas.height);
     this._updateUiPanelScaling();
+  }
+
+  private _applyGraphicsQuality(quality: GraphicsQuality): void {
+    this._graphicsConfig = QUALITY_PRESETS[quality];
+    for (const q of ['low', 'medium', 'high'] as GraphicsQuality[]) {
+      const btn = document.getElementById(`setting-quality-${q}`);
+      if (btn) {
+        if (q === quality) btn.classList.add('quality-btn-active');
+        else btn.classList.remove('quality-btn-active');
+      }
+    }
   }
 
   private _updateUiPanelScaling(): void {
@@ -519,7 +545,7 @@ class Game {
     if (this._zoneBannerTimer > 0) this._zoneBannerTimer -= dt;
 
     // ── World / enemies / collisions ────────────────────────────────
-    this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position);
+    this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position, this._graphicsConfig);
     this._runAutoCrafting();
 
     const stationBeamShotCount = this.world.consumeStationBeamShotsThisFrame();
@@ -540,20 +566,29 @@ class Game {
     }
     this.camera.updateShake(dt);
 
-    // ── Projectiles ─────────────────────────────────────────────────
+    // ── Projectiles (in-place compaction avoids per-frame array allocation) ──
     for (const p of this.projectiles) p.update(dt);
-    this.projectiles.splice(0, this.projectiles.length,
-      ...this.projectiles.filter(p => p.alive));
+    let pj = 0;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      if (this.projectiles[i].alive) this.projectiles[pj++] = this.projectiles[i];
+    }
+    this.projectiles.length = pj;
 
-    // ── Particles ──────────────────────────────────────────────────
+    // ── Particles (in-place compaction) ────────────────────────────
     for (const p of this.particles) updateParticle(p, dt);
-    this.particles.splice(0, this.particles.length,
-      ...this.particles.filter(p => p.lifetime > 0));
+    let pa = 0;
+    for (let i = 0; i < this.particles.length; i++) {
+      if (this.particles[i].lifetime > 0) this.particles[pa++] = this.particles[i];
+    }
+    this.particles.length = pa;
 
-    // ── Floating texts ──────────────────────────────────────────────
+    // ── Floating texts (in-place compaction) ────────────────────────
     for (const f of this.floatingTexts) updateFloatingText(f, dt);
-    this.floatingTexts.splice(0, this.floatingTexts.length,
-      ...this.floatingTexts.filter(f => f.lifetime > 0));
+    let ft = 0;
+    for (let i = 0; i < this.floatingTexts.length; i++) {
+      if (this.floatingTexts[i].lifetime > 0) this.floatingTexts[ft++] = this.floatingTexts[i];
+    }
+    this.floatingTexts.length = ft;
 
     // ── Camera ─────────────────────────────────────────────────────
     this.camera.follow(this.player.pos, dt);
@@ -1228,13 +1263,13 @@ class Game {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Parallax starfield (screen-space, before camera transform)
-    this.starfield.draw(ctx, this.camera.position, canvas.width, canvas.height);
+    this.starfield.draw(ctx, this.camera.position, canvas.width, canvas.height, this._graphicsConfig);
 
     // World-space rendering
     this.camera.begin(ctx);
 
     // Sun at world origin
-    this.sunRenderer.draw(ctx, { x: 0, y: 0 }, 150, this.gameTime);
+    this.sunRenderer.draw(ctx, { x: 0, y: 0 }, 150, this.gameTime, this._graphicsConfig);
 
     this.world.draw(ctx, this.camera.position, canvas.width, canvas.height);
 
@@ -1268,7 +1303,8 @@ class Game {
     for (const p of this.projectiles) p.draw(ctx);
 
     // Particles
-    for (const p of this.particles) drawParticle(ctx, p);
+    const skipTrails = !this._graphicsConfig.particleTrails;
+    for (const p of this.particles) drawParticle(ctx, p, skipTrails);
 
     // Floating damage / XP texts (world-space)
     for (const f of this.floatingTexts) drawFloatingText(ctx, f);
@@ -1292,8 +1328,12 @@ class Game {
         canvas.height,
         (p: Vec2) => this.camera.worldToScreen(p),
         occluders,
+        this._graphicsConfig,
       );
     }
+
+    // ── Post-process shaders (vignette, bloom) ─────────────────────
+    this.postProcess.draw(ctx, canvas, this._graphicsConfig);
 
     // ── Minimap ────────────────────────────────────────────────────
     if (this.player.alive) this._drawMinimap(ctx);

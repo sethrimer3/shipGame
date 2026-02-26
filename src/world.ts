@@ -453,7 +453,7 @@ export class World {
         steerShipAroundAsteroids(enemy.pos, enemy.vel, enemy.radius, chunk.asteroids, dt);
         enemy.update(dt, player, projectiles, particles);
       }
-      chunk.enemies = chunk.enemies.filter(e => e.alive);
+      { let j = 0; for (let i = 0; i < chunk.enemies.length; i++) { if (chunk.enemies[i].alive) chunk.enemies[j++] = chunk.enemies[i]; } chunk.enemies.length = j; }
 
       // ── Asteroid-projectile collisions ────────────────────────────
       for (const asteroid of chunk.asteroids) {
@@ -544,7 +544,7 @@ export class World {
           }
         }
       }
-      chunk.asteroids = chunk.asteroids.filter(a => a.alive);
+      { let j = 0; for (let i = 0; i < chunk.asteroids.length; i++) { if (chunk.asteroids[i].alive) chunk.asteroids[j++] = chunk.asteroids[i]; } chunk.asteroids.length = j; }
 
       // ── Asteroid physics update ───────────────────────────────────
       for (const asteroid of chunk.asteroids) {
@@ -686,7 +686,7 @@ export class World {
           }
         }
       }
-      chunk.motherships = chunk.motherships.filter(ms => ms.alive);
+      { let j = 0; for (let i = 0; i < chunk.motherships.length; i++) { if (chunk.motherships[i].alive) chunk.motherships[j++] = chunk.motherships[i]; } chunk.motherships.length = j; }
 
       // ── Turret AI update ──────────────────────────────────────────
       for (const turret of chunk.turrets) {
@@ -709,7 +709,7 @@ export class World {
           }
         }
       }
-      chunk.turrets = chunk.turrets.filter(t => t.alive);
+      { let j = 0; for (let i = 0; i < chunk.turrets.length; i++) { if (chunk.turrets[i].alive) chunk.turrets[j++] = chunk.turrets[i]; } chunk.turrets.length = j; }
 
       // ── Interceptor AI update + asteroid collisions ──────────────
       for (const ic of chunk.interceptors) {
@@ -753,10 +753,10 @@ export class World {
         if (dist(ic.pos, player.pos) < ic.radius + player.radius) {
           player.damageModule(ic.pos, ic.ramDamage, particles);
           ic.alive = false;
-          particles.push(...Array.from({ length: 14 }, () => {
+          for (let i = 0; i < 14; i++) {
             const ang = Math.random() * Math.PI * 2;
             const spd = 60 + Math.random() * 100;
-            return {
+            particles.push({
               pos:      { x: ic.pos.x, y: ic.pos.y },
               vel:      { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd },
               color:    '#ff4444',
@@ -764,8 +764,8 @@ export class World {
               lifetime: 0.4 + Math.random() * 0.5,
               maxLife:  0.9,
               alpha:    1,
-            };
-          }));
+            });
+          }
           floatingTexts.push(makeFloatingText(
             { x: player.pos.x + (Math.random() - 0.5) * 24, y: player.pos.y - player.radius - 10 },
             `-${ic.ramDamage} RAM`,
@@ -798,7 +798,7 @@ export class World {
           }
         }
       }
-      chunk.interceptors = chunk.interceptors.filter(ic => ic.alive);
+      { let j = 0; for (let i = 0; i < chunk.interceptors.length; i++) { if (chunk.interceptors[i].alive) chunk.interceptors[j++] = chunk.interceptors[i]; } chunk.interceptors.length = j; }
 
       // ── Gunship AI update ──────────────────────────────────────────
       for (const gs of chunk.gunships) {
@@ -837,7 +837,7 @@ export class World {
           }
         }
       }
-      chunk.gunships = chunk.gunships.filter(gs => gs.alive);
+      { let j = 0; for (let i = 0; i < chunk.gunships.length; i++) { if (chunk.gunships[i].alive) chunk.gunships[j++] = chunk.gunships[i]; } chunk.gunships.length = j; }
 
       // ── Bomber AI update ───────────────────────────────────────────
       for (const bm of chunk.bombers) {
@@ -876,7 +876,7 @@ export class World {
           }
         }
       }
-      chunk.bombers = chunk.bombers.filter(bm => bm.alive);
+      { let j = 0; for (let i = 0; i < chunk.bombers.length; i++) { if (chunk.bombers[i].alive) chunk.bombers[j++] = chunk.bombers[i]; } chunk.bombers.length = j; }
     }
 
 
@@ -914,7 +914,7 @@ export class World {
         p.lifetime = 0; // mark collected
       }
     }
-    this.pickups = this.pickups.filter(p => p.lifetime > 0);
+    { let j = 0; for (let i = 0; i < this.pickups.length; i++) { if (this.pickups[i].lifetime > 0) this.pickups[j++] = this.pickups[i]; } this.pickups.length = j; }
 
     // ── Health pickup update & collection ─────────────────────────
     for (const h of this.healthPickups) {
@@ -942,7 +942,7 @@ export class World {
         h.lifetime = 0;
       }
     }
-    this.healthPickups = this.healthPickups.filter(h => h.lifetime > 0);
+    { let j = 0; for (let i = 0; i < this.healthPickups.length; i++) { if (this.healthPickups[i].lifetime > 0) this.healthPickups[j++] = this.healthPickups[i]; } this.healthPickups.length = j; }
 
     // ── Placed-block projectile collisions ───────────────────────
     for (const block of this.placedBlocks) {
@@ -956,7 +956,7 @@ export class World {
         }
       }
     }
-    this.placedBlocks = this.placedBlocks.filter(b => b.alive);
+    { let j = 0; for (let i = 0; i < this.placedBlocks.length; i++) { if (this.placedBlocks[i].alive) this.placedBlocks[j++] = this.placedBlocks[i]; } this.placedBlocks.length = j; }
 
     // ── Drone update ──────────────────────────────────────────────
     for (const drone of this.drones) {
@@ -998,7 +998,7 @@ export class World {
         }
       }
     }
-    this.drones = this.drones.filter(d => d.alive);
+    { let j = 0; for (let i = 0; i < this.drones.length; i++) { if (this.drones[i].alive) this.drones[j++] = this.drones[i]; } this.drones.length = j; }
 
     // ── Planet molecule simulation + projectile impact ─────────────
     for (const chunk of chunks) {
@@ -1074,7 +1074,7 @@ export class World {
       // Passive damage – unattached modules degrade over time
       fm.hp -= FLOATING_MODULE_DAMAGE_RATE * dt;
     }
-    this.floatingModules = this.floatingModules.filter(fm => fm.hp > 0);
+    { let j = 0; for (let i = 0; i < this.floatingModules.length; i++) { if (this.floatingModules[i].hp > 0) this.floatingModules[j++] = this.floatingModules[i]; } this.floatingModules.length = j; }
   }
 
   draw(ctx: CanvasRenderingContext2D, camPos: Vec2, viewportWidthPx: number, viewportHeightPx: number): void {

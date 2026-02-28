@@ -549,18 +549,21 @@ export class World {
               if (!b.alive) continue;
               const blockX = b.col * BLOCK_SIZE;
               const blockY = b.row * BLOCK_SIZE;
+              const expandedX = blockX - proj.radius;
+              const expandedY = blockY - proj.radius;
+              const expandedSize = BLOCK_SIZE + proj.radius * 2;
               const intersects =
                 circleVsRect(lx, ly, proj.radius, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
                 || circleVsRect(prevLx, prevLy, proj.radius, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
-                || segmentIntersectsRect(prevLx, prevLy, lx, ly, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE);
+                || segmentIntersectsRect(prevLx, prevLy, lx, ly, expandedX, expandedY, expandedSize, expandedSize);
               if (!intersects) continue;
               const hitT = segmentRectEntryTime(
                 prevLx, prevLy,
                 lx, ly,
-                blockX - proj.radius,
-                blockY - proj.radius,
-                BLOCK_SIZE + proj.radius * 2,
-                BLOCK_SIZE + proj.radius * 2,
+                expandedX,
+                expandedY,
+                expandedSize,
+                expandedSize,
               );
               const sortT = hitT ?? 0;
               if (sortT >= bestHitT) continue;

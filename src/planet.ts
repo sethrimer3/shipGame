@@ -108,9 +108,12 @@ export interface SplashParticleData {
   pos: Vec2;
   vel: Vec2;
   color: string;
-  /** True for water or sand molecules – these are gravitationally attracted to planet cores. */
+  /** True for detached terrain molecules – these are simulated as loose world particles. */
   isLoose: boolean;
 }
+
+const COLLAPSE_SCAN_RADIUS_MULT = 4.5;
+const COLLAPSE_INWARD_CHECK_STEPS = 2;
 
 export class Planet {
   readonly molecules: PowderMolecule[] = [];
@@ -482,6 +485,30 @@ export class Planet {
     const awayAngleRad = Math.atan2(hitPos.y - this.pos.y, hitPos.x - this.pos.x);
 
     const splashData: SplashParticleData[] = [];
+    const removedCellKeySet = new Set<string>();
+    const step = POWDER_SIZE;
+    const halfStep = step * 0.5;
+    const toCellKey = (x: number, y: number): string => {
+      const gx = Math.floor((x - this.pos.x) / step);
+      const gy = Math.floor((y - this.pos.y) / step);
+      return `${gx},${gy}`;
+    };
+
+    const detachMolecule = (moleculeIndex: number, molecule: PowderMolecule, speedScale: number): void => {
+      molecule.alive = false;
+      this._isMoleculeActive[moleculeIndex] = false;
+      removedCellKeySet.add(toCellKey(molecule.pos.x, molecule.pos.y));
+      const sprayAngle = awayAngleRad + (Math.random() - 0.5) * IMPACT_SPRAY_HALF_ANGLE * 2;
+      const speed = (35 + Math.random() * 70) * speedScale;
+      const isLoose = molecule.type !== 'lava';
+      splashData.push({
+        pos: { x: molecule.pos.x, y: molecule.pos.y },
+        vel: { x: Math.cos(sprayAngle) * speed, y: Math.sin(sprayAngle) * speed },
+        color: molecule.color,
+        isLoose,
+      });
+    };
+
     for (let i = 0; i < this.molecules.length; i++) {
       const m = this.molecules[i];
       if (!m.alive) continue;
@@ -489,19 +516,8 @@ export class Planet {
       const dy = m.pos.y - hitPos.y;
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d < craterRadius) {
-        m.alive = false;
-        this._isMoleculeActive[i] = false;
-        // Random angle within the 180° hemisphere away from planet centre
-        const ang = awayAngleRad + (Math.random() - 0.5) * IMPACT_SPRAY_HALF_ANGLE * 2;
-        const isLoose = m.type === 'water' || m.type === 'sand';
         const typeSpeed = m.type === 'water' ? 1.6 : m.type === 'sand' ? 0.9 : m.type === 'stone' ? 0.75 : 0.25;
-        const speed = (45 + Math.random() * 90) * typeSpeed;
-        splashData.push({
-          pos: { x: m.pos.x, y: m.pos.y },
-          vel: { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed },
-          color: m.color,
-          isLoose,
-        });
+        detachMolecule(i, m, typeSpeed);
       } else if (d < splashRadius) {
         const typeScale = m.type === 'water' ? 1.4 : m.type === 'sand' ? 1.0 : m.type === 'stone' ? 0.55 : 0.3;
         const strength = force * typeScale * (1 - d / splashRadius) / Math.max(d, 1);
@@ -509,6 +525,45 @@ export class Planet {
         m.vel.y += dy * strength;
         this._activateMolecule(i);
       }
+    }
+
+    const collapseScanRadius = splashRadius * COLLAPSE_SCAN_RADIUS_MULT;
+    const aliveCellKeySet = new Set<string>();
+    for (let i = 0; i < this.molecules.length; i++) {
+      const m = this.molecules[i];
+      if (!m.alive) continue;
+      aliveCellKeySet.add(toCellKey(m.pos.x, m.pos.y));
+    }
+
+    for (let i = 0; i < this.molecules.length; i++) {
+      const m = this.molecules[i];
+      if (!m.alive || m.type === 'lava') continue;
+      const dxHit = m.pos.x - hitPos.x;
+      const dyHit = m.pos.y - hitPos.y;
+      const hitDist = Math.sqrt(dxHit * dxHit + dyHit * dyHit);
+      if (hitDist > collapseScanRadius) continue;
+
+      const dxCore = m.pos.x - this.pos.x;
+      const dyCore = m.pos.y - this.pos.y;
+      const coreDist = Math.sqrt(dxCore * dxCore + dyCore * dyCore);
+      if (coreDist <= this.radius * LAVA_CORE_RATIO + halfStep || coreDist < 0.01) continue;
+
+      const invCoreDist = 1 / coreDist;
+      let hasInwardSupport = false;
+      for (let stepIndex = 1; stepIndex <= COLLAPSE_INWARD_CHECK_STEPS; stepIndex++) {
+        const checkX = m.pos.x - dxCore * invCoreDist * step * stepIndex;
+        const checkY = m.pos.y - dyCore * invCoreDist * step * stepIndex;
+        const key = toCellKey(checkX, checkY);
+        if (aliveCellKeySet.has(key) && !removedCellKeySet.has(key)) {
+          hasInwardSupport = true;
+          break;
+        }
+      }
+      if (hasInwardSupport) continue;
+
+      aliveCellKeySet.delete(toCellKey(m.pos.x, m.pos.y));
+      const collapseSpeedScale = m.type === 'water' ? 1.1 : m.type === 'sand' ? 0.7 : 0.55;
+      detachMolecule(i, m, collapseSpeedScale);
     }
 
     for (let plantIndex = 0; plantIndex < this._plants.length; plantIndex++) {

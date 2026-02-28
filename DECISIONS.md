@@ -146,3 +146,9 @@
 - Rebirth starts with a deterministic per-module resource pool sized to always rebuild the default starter ship (`11 hull`, `2 engine`, `1 miningLaser`), while preserving room for future permanent starting-resource upgrades.
 - Gems still carry over between loops; non-gem inventory still resets.
 
+
+## 2026-02-28 — Planet impact collapse detaches unsupported crust
+
+- Planet impacts now run a local support scan around the blast and detach non-lava molecules that no longer have inward support toward the core.
+- Detached molecules are emitted through the existing `SplashParticleData` path as loose world particles, so mountain overhangs collapse instead of floating after their base is removed.
+- This keeps the collapse behaviour predictable and localized (bounded by impact radius scaling) while preserving performance by avoiding per-frame global terrain connectivity checks.

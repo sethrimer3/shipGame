@@ -18,6 +18,18 @@ const IMPACT_CRATER_RADIUS = 22;
 /** Radius within which molecules get outward velocity on a direct impact (splash). */
 const IMPACT_SPLASH_RADIUS = 55;
 
+/** Reference force value used to baseline the AoE scale (world units). */
+const IMPACT_BASE_FORCE = 30;
+
+/** Dense core: grid half-extent in squares (core is (2*CORE_GRID+1)^2 squares). */
+const CORE_GRID = 1;
+
+/** Fraction of impact force dealt as core damage per hit. */
+const CORE_DAMAGE_SCALE = 0.4;
+
+/** Angle span (radians) used for the 180° hemisphere spray away from planet centre. */
+const IMPACT_SPRAY_HALF_ANGLE = Math.PI / 2;
+
 /** Distance from a plant base within which an impact ignites the plant. */
 const PLANT_BURN_RADIUS = 90;
 
@@ -96,6 +108,8 @@ export interface SplashParticleData {
   pos: Vec2;
   vel: Vec2;
   color: string;
+  /** True for water or sand molecules – these are gravitationally attracted to planet cores. */
+  isLoose: boolean;
 }
 
 export class Planet {
@@ -114,17 +128,26 @@ export class Planet {
   private _minimapColor = '#7a9e7e';
   private _minimapColorTimerSec = 0;
 
+  /** Dense core HP – when this reaches 0, all molecular gravity ceases. */
+  private _coreHp: number = 0;
+  private readonly _coreMaxHp: number;
+
   constructor(
     public readonly pos: Vec2,
     radius: number,
     rng: () => number,
   ) {
     this.radius = radius;
+    this._coreMaxHp = radius * 3;
+    this._coreHp    = this._coreMaxHp;
     this._generateTerrainProfile(rng);
     this._generateMolecules(rng);
     this._generatePlants(rng);
     this._updateMinimapColor();
   }
+
+  get coreAlive(): boolean   { return this._coreHp > 0; }
+  get coreHpRatio(): number  { return Math.max(0, this._coreHp / this._coreMaxHp); }
 
   private _generateTerrainProfile(rng: () => number): void {
     for (let i = 0; i < TERRAIN_SAMPLE_COUNT; i++) {
@@ -362,7 +385,9 @@ export class Planet {
 
   update(dt: number, skipMolecules = false): void {
     if (!skipMolecules) {
-      const damp = Math.pow(VELOCITY_DAMP, dt * 60);
+      // When core is destroyed molecules drift freely (no spring, no damping).
+      const coreAlive = this.coreAlive;
+      const damp = coreAlive ? Math.pow(VELOCITY_DAMP, dt * 60) : 1;
       let writeIndex = 0;
       for (let activeIndex = 0; activeIndex < this._activeMoleculeIndices.length; activeIndex++) {
         const moleculeIndex = this._activeMoleculeIndices[activeIndex];
@@ -372,24 +397,30 @@ export class Planet {
           continue;
         }
 
-        const dx = molecule.restPos.x - molecule.pos.x;
-        const dy = molecule.restPos.y - molecule.pos.y;
-        molecule.vel.x += dx * GRAVITY_K * dt;
-        molecule.vel.y += dy * GRAVITY_K * dt;
-        molecule.vel.x *= damp;
-        molecule.vel.y *= damp;
-        molecule.pos.x += molecule.vel.x * dt;
-        molecule.pos.y += molecule.vel.y * dt;
+        if (coreAlive) {
+          const dx = molecule.restPos.x - molecule.pos.x;
+          const dy = molecule.restPos.y - molecule.pos.y;
+          molecule.vel.x += dx * GRAVITY_K * dt;
+          molecule.vel.y += dy * GRAVITY_K * dt;
+          molecule.vel.x *= damp;
+          molecule.vel.y *= damp;
+          molecule.pos.x += molecule.vel.x * dt;
+          molecule.pos.y += molecule.vel.y * dt;
 
-        const displacementSq = dx * dx + dy * dy;
-        const velocitySq = molecule.vel.x * molecule.vel.x + molecule.vel.y * molecule.vel.y;
-        if (displacementSq < STAGNANT_DISPLACEMENT_SQ && velocitySq < STAGNANT_VELOCITY_SQ) {
-          molecule.pos.x = molecule.restPos.x;
-          molecule.pos.y = molecule.restPos.y;
-          molecule.vel.x = 0;
-          molecule.vel.y = 0;
-          this._isMoleculeActive[moleculeIndex] = false;
-          continue;
+          const displacementSq = dx * dx + dy * dy;
+          const velocitySq = molecule.vel.x * molecule.vel.x + molecule.vel.y * molecule.vel.y;
+          if (displacementSq < STAGNANT_DISPLACEMENT_SQ && velocitySq < STAGNANT_VELOCITY_SQ) {
+            molecule.pos.x = molecule.restPos.x;
+            molecule.pos.y = molecule.restPos.y;
+            molecule.vel.x = 0;
+            molecule.vel.y = 0;
+            this._isMoleculeActive[moleculeIndex] = false;
+            continue;
+          }
+        } else {
+          // Core dead: molecules drift with no drag or spring
+          molecule.pos.x += molecule.vel.x * dt;
+          molecule.pos.y += molecule.vel.y * dt;
         }
 
         this._activeMoleculeIndices[writeIndex++] = moleculeIndex;
@@ -439,6 +470,17 @@ export class Planet {
   }
 
   impactAt(hitPos: Vec2, force: number): SplashParticleData[] {
+    // Damage the dense core
+    this._coreHp = Math.max(0, this._coreHp - force * CORE_DAMAGE_SCALE);
+
+    // Scale crater/splash AoE by weapon power (cube-root scaling to avoid runaway)
+    const forceScale = Math.cbrt(Math.max(1, force) / IMPACT_BASE_FORCE);
+    const craterRadius = IMPACT_CRATER_RADIUS * forceScale;
+    const splashRadius = IMPACT_SPLASH_RADIUS * forceScale;
+
+    // 180° spray hemisphere – away from planet centre toward the hit point
+    const awayAngleRad = Math.atan2(hitPos.y - this.pos.y, hitPos.x - this.pos.x);
+
     const splashData: SplashParticleData[] = [];
     for (let i = 0; i < this.molecules.length; i++) {
       const m = this.molecules[i];
@@ -446,20 +488,23 @@ export class Planet {
       const dx = m.pos.x - hitPos.x;
       const dy = m.pos.y - hitPos.y;
       const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < IMPACT_CRATER_RADIUS) {
+      if (d < craterRadius) {
         m.alive = false;
         this._isMoleculeActive[i] = false;
-        const ang = Math.atan2(dy, dx);
+        // Random angle within the 180° hemisphere away from planet centre
+        const ang = awayAngleRad + (Math.random() - 0.5) * IMPACT_SPRAY_HALF_ANGLE * 2;
+        const isLoose = m.type === 'water' || m.type === 'sand';
         const typeSpeed = m.type === 'water' ? 1.6 : m.type === 'sand' ? 0.9 : m.type === 'stone' ? 0.75 : 0.25;
         const speed = (45 + Math.random() * 90) * typeSpeed;
         splashData.push({
           pos: { x: m.pos.x, y: m.pos.y },
           vel: { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed },
           color: m.color,
+          isLoose,
         });
-      } else if (d < IMPACT_SPLASH_RADIUS) {
+      } else if (d < splashRadius) {
         const typeScale = m.type === 'water' ? 1.4 : m.type === 'sand' ? 1.0 : m.type === 'stone' ? 0.55 : 0.3;
-        const strength = force * typeScale * (1 - d / IMPACT_SPLASH_RADIUS) / Math.max(d, 1);
+        const strength = force * typeScale * (1 - d / splashRadius) / Math.max(d, 1);
         m.vel.x += dx * strength;
         m.vel.y += dy * strength;
         this._activateMolecule(i);
@@ -526,6 +571,38 @@ export class Planet {
       ctx.rect(m.pos.x - half, m.pos.y - half, POWDER_SIZE, POWDER_SIZE);
     }
     if (batchColor !== '') ctx.fill();
+
+    // ── Dense core squares ────────────────────────────────────────────
+    // Only draw if core is visible on screen and hasn't been fully destroyed
+    if (this._coreHp > 0 &&
+      this.pos.x + POWDER_SIZE * (CORE_GRID + 1) >= minX &&
+      this.pos.x - POWDER_SIZE * (CORE_GRID + 1) <= maxX &&
+      this.pos.y + POWDER_SIZE * (CORE_GRID + 1) >= minY &&
+      this.pos.y - POWDER_SIZE * (CORE_GRID + 1) <= maxY
+    ) {
+      const ratio = this.coreHpRatio;
+      const glow = ctx.createRadialGradient(
+        this.pos.x, this.pos.y, 0,
+        this.pos.x, this.pos.y, POWDER_SIZE * (CORE_GRID + 2),
+      );
+      glow.addColorStop(0, `rgba(255,255,180,${0.85 * ratio})`);
+      glow.addColorStop(1, 'rgba(255,140,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y, POWDER_SIZE * (CORE_GRID + 2), 0, Math.PI * 2);
+      ctx.fill();
+      const coreColor = ratio > 0.5 ? '#ffffcc' : ratio > 0.25 ? '#ffcc44' : '#ff6600';
+      ctx.fillStyle = coreColor;
+      ctx.beginPath();
+      for (let r = -CORE_GRID; r <= CORE_GRID; r++) {
+        for (let c = -CORE_GRID; c <= CORE_GRID; c++) {
+          const sx = this.pos.x + c * POWDER_SIZE - POWDER_SIZE * 0.5;
+          const sy = this.pos.y + r * POWDER_SIZE - POWDER_SIZE * 0.5;
+          ctx.rect(sx, sy, POWDER_SIZE, POWDER_SIZE);
+        }
+      }
+      ctx.fill();
+    }
 
     ctx.save();
     for (let plantIndex = 0; plantIndex < this._plants.length; plantIndex++) {

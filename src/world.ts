@@ -12,8 +12,6 @@ import { Player }    from './player';
 import { BLOCK_SIZE, Block } from './block';
 import { Mothership, mothershipTierForDist } from './mothership';
 import {
-  circleVsRect,
-  segmentIntersectsRect,
   segmentCircleClosestT,
   segmentCircleEntryTime,
   segmentRectEntryTime,
@@ -512,6 +510,47 @@ export class World {
     return true;
   }
 
+  private _hitProjectileVsAsteroid(proj: Projectile, asteroid: Asteroid): Block | null {
+    const lx = proj.pos.x - asteroid.pos.x;
+    const ly = proj.pos.y - asteroid.pos.y;
+    const prevLx = proj.prevPos.x - asteroid.pos.x;
+    const prevLy = proj.prevPos.y - asteroid.pos.y;
+
+    let nearestBlock: Block | null = null;
+    let nearestHitTime = Number.POSITIVE_INFINITY;
+
+    for (const block of asteroid.blocks) {
+      if (!block.alive) continue;
+      const blockX = block.col * BLOCK_SIZE;
+      const blockY = block.row * BLOCK_SIZE;
+      const expandedX = blockX - proj.radius;
+      const expandedY = blockY - proj.radius;
+      const expandedSize = BLOCK_SIZE + proj.radius * 2;
+      const startedInside =
+        prevLx >= expandedX && prevLx <= expandedX + expandedSize
+        && prevLy >= expandedY && prevLy <= expandedY + expandedSize;
+      const hitTime = startedInside
+        ? 0
+        : segmentRectEntryTime(
+          prevLx,
+          prevLy,
+          lx,
+          ly,
+          expandedX,
+          expandedY,
+          expandedSize,
+          expandedSize,
+        );
+      if (hitTime === null || hitTime >= nearestHitTime) continue;
+      nearestHitTime = hitTime;
+      nearestBlock = block;
+    }
+
+    if (!nearestBlock) return null;
+    this._stopProjectileAtTime(proj, nearestHitTime);
+    return nearestBlock;
+  }
+
   update(
     dt:           number,
     player:       Player,
@@ -538,39 +577,7 @@ export class World {
         if (!asteroid.alive) continue;
         for (const proj of projectiles) {
           if (!proj.alive) continue;
-          const lx = proj.pos.x - asteroid.pos.x;
-          const ly = proj.pos.y - asteroid.pos.y;
-          const prevLx = proj.prevPos.x - asteroid.pos.x;
-          const prevLy = proj.prevPos.y - asteroid.pos.y;
-          let block = asteroid.blockAt(proj.pos);
-          if (!block) {
-            let bestHitT = Number.POSITIVE_INFINITY;
-            for (const b of asteroid.blocks) {
-              if (!b.alive) continue;
-              const blockX = b.col * BLOCK_SIZE;
-              const blockY = b.row * BLOCK_SIZE;
-              const expandedX = blockX - proj.radius;
-              const expandedY = blockY - proj.radius;
-              const expandedSize = BLOCK_SIZE + proj.radius * 2;
-              const intersects =
-                circleVsRect(lx, ly, proj.radius, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
-                || circleVsRect(prevLx, prevLy, proj.radius, blockX, blockY, BLOCK_SIZE, BLOCK_SIZE)
-                || segmentIntersectsRect(prevLx, prevLy, lx, ly, expandedX, expandedY, expandedSize, expandedSize);
-              if (!intersects) continue;
-              const hitT = segmentRectEntryTime(
-                prevLx, prevLy,
-                lx, ly,
-                expandedX,
-                expandedY,
-                expandedSize,
-                expandedSize,
-              );
-              const sortT = hitT ?? 0;
-              if (sortT >= bestHitT) continue;
-              bestHitT = sortT;
-              block = b;
-            }
-          }
+          const block = this._hitProjectileVsAsteroid(proj, asteroid);
           if (block) {
             // Trap asteroid: trigger drone swarm on first hit
             if (asteroid.isTrap && !asteroid.trapTriggered) {

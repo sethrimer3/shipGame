@@ -118,6 +118,7 @@ const COLLAPSE_INWARD_CHECK_STEPS = 2;
 export class Planet {
   readonly molecules: PowderMolecule[] = [];
   readonly radius: number;
+  readonly collisionRadius: number;
 
   private readonly _plants: Plant[] = [];
   private readonly _surfaceRadiusBySample: number[] = new Array<number>(TERRAIN_SAMPLE_COUNT);
@@ -144,9 +145,20 @@ export class Planet {
     this._coreMaxHp = radius * 3;
     this._coreHp    = this._coreMaxHp;
     this._generateTerrainProfile(rng);
+    this.collisionRadius = this._computeCollisionRadius();
     this._generateMolecules(rng);
     this._generatePlants(rng);
     this._updateMinimapColor();
+  }
+
+  private _computeCollisionRadius(): number {
+    let radiusSum = 0;
+    for (let sampleIndex = 0; sampleIndex < TERRAIN_SAMPLE_COUNT; sampleIndex++) {
+      const surfaceRadius = this._surfaceRadiusBySample[sampleIndex];
+      const mountainPeakRadius = this._mountainPeakRadiusBySample[sampleIndex];
+      radiusSum += Math.max(surfaceRadius, mountainPeakRadius);
+    }
+    return radiusSum / TERRAIN_SAMPLE_COUNT;
   }
 
   get coreAlive(): boolean   { return this._coreHp > 0; }

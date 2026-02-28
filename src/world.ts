@@ -634,6 +634,29 @@ export class World {
       }
       { let j = 0; for (let i = 0; i < chunk.asteroids.length; i++) { if (chunk.asteroids[i].alive) chunk.asteroids[j++] = chunk.asteroids[i]; } chunk.asteroids.length = j; }
 
+      // ── Placed-block projectile collisions (occludes all targets) ─
+      for (const block of this.placedBlocks) {
+        if (!block.alive) continue;
+        for (const proj of projectiles) {
+          if (!proj.alive) continue;
+          const hitT = segmentRectEntryTime(
+            proj.prevPos.x,
+            proj.prevPos.y,
+            proj.pos.x,
+            proj.pos.y,
+            block.pos.x - proj.radius,
+            block.pos.y - proj.radius,
+            BLOCK_SIZE + proj.radius * 2,
+            BLOCK_SIZE + proj.radius * 2,
+          );
+          if (hitT === null) continue;
+          this._stopProjectileAtTime(proj, hitT);
+          block.hp -= proj.damage;
+          if (block.hp <= 0) block.alive = false;
+        }
+      }
+      { let j = 0; for (let i = 0; i < this.placedBlocks.length; i++) { if (this.placedBlocks[i].alive) this.placedBlocks[j++] = this.placedBlocks[i]; } this.placedBlocks.length = j; }
+
       // ── Asteroid physics update ───────────────────────────────────
       for (const asteroid of chunk.asteroids) {
         asteroid.update(dt);
@@ -1032,29 +1055,6 @@ export class World {
     }
     { let j = 0; for (let i = 0; i < this.healthPickups.length; i++) { if (this.healthPickups[i].lifetime > 0) this.healthPickups[j++] = this.healthPickups[i]; } this.healthPickups.length = j; }
 
-    // ── Placed-block projectile collisions ───────────────────────
-    for (const block of this.placedBlocks) {
-      if (!block.alive) continue;
-      for (const proj of projectiles) {
-        if (!proj.alive) continue;
-        const hitT = segmentRectEntryTime(
-          proj.prevPos.x,
-          proj.prevPos.y,
-          proj.pos.x,
-          proj.pos.y,
-          block.pos.x - proj.radius,
-          block.pos.y - proj.radius,
-          BLOCK_SIZE + proj.radius * 2,
-          BLOCK_SIZE + proj.radius * 2,
-        );
-        if (hitT === null) continue;
-        this._stopProjectileAtTime(proj, hitT);
-        block.hp -= proj.damage;
-        if (block.hp <= 0) block.alive = false;
-      }
-    }
-    { let j = 0; for (let i = 0; i < this.placedBlocks.length; i++) { if (this.placedBlocks[i].alive) this.placedBlocks[j++] = this.placedBlocks[i]; } this.placedBlocks.length = j; }
-
     // ── Drone update ──────────────────────────────────────────────
     for (const drone of this.drones) {
       if (!drone.alive) continue;
@@ -1111,7 +1111,7 @@ export class World {
             proj.pos.y,
             planet.pos.x,
             planet.pos.y,
-            planet.radius,
+            planet.collisionRadius,
           );
           if (hitT === null) continue;
           this._stopProjectileAtTime(proj, hitT);
@@ -1154,7 +1154,7 @@ export class World {
           const dy = planet.pos.y - pos.y;
           const d2 = dx * dx + dy * dy;
           const d  = Math.sqrt(d2);
-          if (d > gravRange || d < planet.radius) return;
+          if (d > gravRange || d < planet.collisionRadius) return;
           const accel = PLANET_GRAVITY_STRENGTH * planet.radius / Math.max(d2, 400);
           const invD  = 1 / d;
           vel.x += dx * invD * accel * dt;
@@ -1174,12 +1174,12 @@ export class World {
     // ── Ship-planet collision resolution ──────────────────────────
     for (const chunk of chunks) {
       for (const planet of chunk.planets) {
-        resolveShipPlanetCollision(player.pos, player.vel, player.radius, planet.pos, planet.radius);
-        for (const e  of chunk.enemies)      { if (e.alive)  resolveShipPlanetCollision(e.pos,  e.vel,  e.radius,  planet.pos, planet.radius); }
-        for (const gs of chunk.gunships)     { if (gs.alive) resolveShipPlanetCollision(gs.pos, gs.vel, gs.radius, planet.pos, planet.radius); }
-        for (const bm of chunk.bombers)      { if (bm.alive) resolveShipPlanetCollision(bm.pos, bm.vel, bm.radius, planet.pos, planet.radius); }
-        for (const ic of chunk.interceptors) { if (ic.alive) resolveShipPlanetCollision(ic.pos, ic.vel, ic.radius, planet.pos, planet.radius); }
-        for (const drone of this.drones)     { if (drone.alive) resolveShipPlanetCollision(drone.pos, drone.vel, drone.radius, planet.pos, planet.radius); }
+        resolveShipPlanetCollision(player.pos, player.vel, player.radius, planet.pos, planet.collisionRadius);
+        for (const e  of chunk.enemies)      { if (e.alive)  resolveShipPlanetCollision(e.pos,  e.vel,  e.radius,  planet.pos, planet.collisionRadius); }
+        for (const gs of chunk.gunships)     { if (gs.alive) resolveShipPlanetCollision(gs.pos, gs.vel, gs.radius, planet.pos, planet.collisionRadius); }
+        for (const bm of chunk.bombers)      { if (bm.alive) resolveShipPlanetCollision(bm.pos, bm.vel, bm.radius, planet.pos, planet.collisionRadius); }
+        for (const ic of chunk.interceptors) { if (ic.alive) resolveShipPlanetCollision(ic.pos, ic.vel, ic.radius, planet.pos, planet.collisionRadius); }
+        for (const drone of this.drones)     { if (drone.alive) resolveShipPlanetCollision(drone.pos, drone.vel, drone.radius, planet.pos, planet.collisionRadius); }
       }
     }
 
@@ -1231,7 +1231,7 @@ export class World {
           const sdx = lp.pos.x - planet.pos.x;
           const sdy = lp.pos.y - planet.pos.y;
           const sd2 = sdx * sdx + sdy * sdy;
-          const minDist = planet.radius + lp.halfSize;
+          const minDist = planet.collisionRadius + lp.halfSize;
           if (sd2 >= minDist * minDist || sd2 < LOOSE_PARTICLE_MIN_PLANET_DIST_SQ) continue;
           const sd = Math.sqrt(sd2);
           const invSd = 1 / sd;

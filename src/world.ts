@@ -71,8 +71,16 @@ const PLANET_GRAVITY_RANGE    = 600;
 const ASTEROID_PLANET_CLEARANCE = 80;
 /** Drag multiplier per frame for loose particles – nearly frictionless in space. */
 const LOOSE_PARTICLE_DRAG = 0.9998;
+/** Minimum squared distance from a planet centre used in surface-collision to avoid divide-by-zero. */
+const LOOSE_PARTICLE_MIN_PLANET_DIST_SQ = 0.01;
+/** Minimum squared separation between two loose particles to attempt collision resolution (avoids divide-by-zero). */
+const LOOSE_PARTICLE_MIN_SEP_SQ = 0.0001;
 /** Max lifetime (seconds) for a loose particle far from all planet cores. */
 const LOOSE_PARTICLE_MAX_LIFE = 25;
+/** Gravitational strength used specifically for loose planet particles – stronger than ship gravity so ejected molecules are pulled back. */
+const LOOSE_PARTICLE_GRAVITY_STRENGTH = 8000;
+/** Restitution coefficient when a loose particle bounces off a planet surface (0 = fully inelastic). */
+const LOOSE_PARTICLE_RESTITUTION = 0.2;
 /** Distance beyond the viewport edge beyond which loose particles without nearby planet gravity are despawned immediately. */
 const LOOSE_PARTICLE_OFFSCREEN_MARGIN = 1200;
 /** Speed (world units/s) imparted to a loose particle struck by a projectile. */
@@ -1167,6 +1175,14 @@ export class World {
 
     // ── Loose planet particle update ──────────────────────────────
     {
+      // Cache alive-core planets once to avoid repeated chunk iteration per particle
+      const alivePlanets: Planet[] = [];
+      for (const c of chunks) {
+        for (const planet of c.planets) {
+          if (planet.coreAlive) alivePlanets.push(planet);
+        }
+      }
+
       const offscreenLimitSq = (HALF_VIEWPORT_EST_WORLD + LOOSE_PARTICLE_OFFSCREEN_MARGIN) * (HALF_VIEWPORT_EST_WORLD + LOOSE_PARTICLE_OFFSCREEN_MARGIN);
       let j = 0;
       for (let i = 0; i < this.looseParticles.length; i++) {
@@ -1178,28 +1194,48 @@ export class World {
 
         // Apply gravity from every alive-core planet in active chunks
         let nearPlanet = false;
-        for (const c of chunks) {
-          for (const planet of c.planets) {
-            if (!planet.coreAlive) continue;
-            const ddx = planet.pos.x - lp.pos.x;
-            const ddy = planet.pos.y - lp.pos.y;
-            const d2  = ddx * ddx + ddy * ddy;
-            const d   = Math.sqrt(d2);
-            const gravRange = planet.radius + PLANET_GRAVITY_RANGE;
-            if (d > gravRange) continue;
-            nearPlanet = true;
-            if (d >= lp.halfSize * 2) {
-              const accel = PLANET_GRAVITY_STRENGTH * planet.radius / Math.max(d2, 400);
-              const invD  = 1 / d;
-              lp.vel.x += ddx * invD * accel * dt;
-              lp.vel.y += ddy * invD * accel * dt;
-            }
+        for (let pi = 0; pi < alivePlanets.length; pi++) {
+          const planet = alivePlanets[pi];
+          const ddx = planet.pos.x - lp.pos.x;
+          const ddy = planet.pos.y - lp.pos.y;
+          const d2  = ddx * ddx + ddy * ddy;
+          const d   = Math.sqrt(d2);
+          const gravRange = planet.radius + PLANET_GRAVITY_RANGE;
+          if (d > gravRange) continue;
+          nearPlanet = true;
+          if (d >= lp.halfSize * 2) {
+            const accel = LOOSE_PARTICLE_GRAVITY_STRENGTH * planet.radius / Math.max(d2, 400);
+            const invD  = 1 / d;
+            lp.vel.x += ddx * invD * accel * dt;
+            lp.vel.y += ddy * invD * accel * dt;
           }
         }
 
         // Move
         lp.pos.x += lp.vel.x * dt;
         lp.pos.y += lp.vel.y * dt;
+
+        // Resolve surface collision with planets to prevent particles from passing through
+        for (let pi = 0; pi < alivePlanets.length; pi++) {
+          const planet = alivePlanets[pi];
+          const sdx = lp.pos.x - planet.pos.x;
+          const sdy = lp.pos.y - planet.pos.y;
+          const sd2 = sdx * sdx + sdy * sdy;
+          const minDist = planet.radius + lp.halfSize;
+          if (sd2 >= minDist * minDist || sd2 < LOOSE_PARTICLE_MIN_PLANET_DIST_SQ) continue;
+          const sd = Math.sqrt(sd2);
+          const invSd = 1 / sd;
+          lp.pos.x = planet.pos.x + sdx * invSd * minDist;
+          lp.pos.y = planet.pos.y + sdy * invSd * minDist;
+          const nx = sdx * invSd;
+          const ny = sdy * invSd;
+          const radVel = lp.vel.x * nx + lp.vel.y * ny;
+          if (radVel < 0) {
+            lp.vel.x -= radVel * nx * (1 + LOOSE_PARTICLE_RESTITUTION);
+            lp.vel.y -= radVel * ny * (1 + LOOSE_PARTICLE_RESTITUTION);
+          }
+          nearPlanet = true;
+        }
 
         // Refresh lifetime when near a planet; decrement when in open space
         if (nearPlanet) {
@@ -1219,6 +1255,37 @@ export class World {
         }
       }
       this.looseParticles.length = j;
+    }
+
+    // ── Loose particle inter-collision (prevent particles from passing through each other) ──
+    {
+      const lpCount = this.looseParticles.length;
+      for (let pi = 0; pi < lpCount - 1; pi++) {
+        const a = this.looseParticles[pi];
+        for (let pj = pi + 1; pj < lpCount; pj++) {
+          const b = this.looseParticles[pj];
+          const cdx = b.pos.x - a.pos.x;
+          const cdy = b.pos.y - a.pos.y;
+          const minSep = a.halfSize + b.halfSize;
+          const cd2 = cdx * cdx + cdy * cdy;
+          if (cd2 >= minSep * minSep || cd2 < LOOSE_PARTICLE_MIN_SEP_SQ) continue;
+          const cd = Math.sqrt(cd2);
+          const nx = cdx / cd;
+          const ny = cdy / cd;
+          const overlap = (minSep - cd) * 0.5;
+          a.pos.x -= nx * overlap;
+          a.pos.y -= ny * overlap;
+          b.pos.x += nx * overlap;
+          b.pos.y += ny * overlap;
+          const relVel = (b.vel.x - a.vel.x) * nx + (b.vel.y - a.vel.y) * ny;
+          if (relVel < 0) {
+            a.vel.x += relVel * nx;
+            a.vel.y += relVel * ny;
+            b.vel.x -= relVel * nx;
+            b.vel.y -= relVel * ny;
+          }
+        }
+      }
     }
 
     // ── Projectile collisions with loose planet particles ─────────

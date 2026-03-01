@@ -1174,12 +1174,20 @@ export class World {
     // ── Ship-planet collision resolution ──────────────────────────
     for (const chunk of chunks) {
       for (const planet of chunk.planets) {
-        resolveShipPlanetCollision(player.pos, player.vel, player.radius, planet.pos, planet.collisionRadius);
-        for (const e  of chunk.enemies)      { if (e.alive)  resolveShipPlanetCollision(e.pos,  e.vel,  e.radius,  planet.pos, planet.collisionRadius); }
-        for (const gs of chunk.gunships)     { if (gs.alive) resolveShipPlanetCollision(gs.pos, gs.vel, gs.radius, planet.pos, planet.collisionRadius); }
-        for (const bm of chunk.bombers)      { if (bm.alive) resolveShipPlanetCollision(bm.pos, bm.vel, bm.radius, planet.pos, planet.collisionRadius); }
-        for (const ic of chunk.interceptors) { if (ic.alive) resolveShipPlanetCollision(ic.pos, ic.vel, ic.radius, planet.pos, planet.collisionRadius); }
-        for (const drone of this.drones)     { if (drone.alive) resolveShipPlanetCollision(drone.pos, drone.vel, drone.radius, planet.pos, planet.collisionRadius); }
+        const resolveEntityVsPlanet = (entityPos: Vec2, entityVel: Vec2, entityRadius: number): void => {
+          const dx = entityPos.x - planet.pos.x;
+          const dy = entityPos.y - planet.pos.y;
+          const angleRad = Math.atan2(dy, dx);
+          const outerRadius = planet.getOuterRadiusAtAngle(angleRad);
+          resolveShipPlanetCollision(entityPos, entityVel, entityRadius, planet.pos, outerRadius);
+        };
+
+        resolveEntityVsPlanet(player.pos, player.vel, player.radius);
+        for (const e  of chunk.enemies)      { if (e.alive)  resolveEntityVsPlanet(e.pos,  e.vel,  e.radius); }
+        for (const gs of chunk.gunships)     { if (gs.alive) resolveEntityVsPlanet(gs.pos, gs.vel, gs.radius); }
+        for (const bm of chunk.bombers)      { if (bm.alive) resolveEntityVsPlanet(bm.pos, bm.vel, bm.radius); }
+        for (const ic of chunk.interceptors) { if (ic.alive) resolveEntityVsPlanet(ic.pos, ic.vel, ic.radius); }
+        for (const drone of this.drones)     { if (drone.alive) resolveEntityVsPlanet(drone.pos, drone.vel, drone.radius); }
       }
     }
 

@@ -161,6 +161,17 @@ export class Planet {
     return radiusSum / TERRAIN_SAMPLE_COUNT;
   }
 
+  private _getOuterRadiusForSampleIndex(sampleIndex: number): number {
+    const surfaceRadius = this._surfaceRadiusBySample[sampleIndex];
+    const mountainPeakRadius = this._mountainPeakRadiusBySample[sampleIndex];
+    return Math.max(surfaceRadius, mountainPeakRadius);
+  }
+
+  getOuterRadiusAtAngle(angleRad: number): number {
+    const sampleIndex = this._angleToSampleIndex(angleRad);
+    return this._getOuterRadiusForSampleIndex(sampleIndex);
+  }
+
   get coreAlive(): boolean   { return this._coreHp > 0; }
   get coreHpRatio(): number  { return Math.max(0, this._coreHp / this._coreMaxHp); }
 

@@ -984,6 +984,43 @@ export class Player {
     this._recalculateShipStats();
   }
 
+  /**
+   * Returns aggregated material costs needed to repair/rebuild all damaged or destroyed modules.
+   * @param moduleRebuildCosts - fallback costs for starter module types (no crafting recipe)
+   * @param craftingRecipes - crafting recipes; used for crafted module types
+   */
+  getRepairMaterialsNeeded(
+    moduleRebuildCosts: Partial<Record<ShipModuleType, ResourceStack[]>>,
+    craftingRecipes: CraftingRecipe[],
+  ): Map<Material, number> {
+    const result = new Map<Material, number>();
+
+    const addCost = (stacks: ResourceStack[], ratio: number): void => {
+      for (const stack of stacks) {
+        const qty = Math.ceil(stack.quantity * ratio);
+        if (qty > 0) result.set(stack.material, (result.get(stack.material) ?? 0) + qty);
+      }
+    };
+
+    const getCost = (type: ShipModuleType): ResourceStack[] | null => {
+      const recipe = craftingRecipes.find(r => r.moduleType === type);
+      if (recipe) return recipe.inputs;
+      return moduleRebuildCosts[type] ?? null;
+    };
+
+    for (const module of this.playerModules) {
+      if (module.isCore) continue;
+      const cost = getCost(module.type);
+      if (!cost) continue;
+      if (!module.alive) {
+        addCost(cost, 1.0);
+      } else if (module.hp < module.maxHp) {
+        addCost(cost, 1 - module.hp / module.maxHp);
+      }
+    }
+    return result;
+  }
+
   /** Returns info for the module (alive+connected) whose block area contains worldPos, or null. */
   getModuleInfoAtWorldPos(worldPos: Vec2): ModuleInfo | null {
     const B = 7;

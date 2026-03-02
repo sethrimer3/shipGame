@@ -42,7 +42,8 @@ export class InputManager {
     this._canvasWidth  = canvas.width  || window.innerWidth;
     this._canvasHeight = canvas.height || window.innerHeight;
 
-    this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    this.isMobile = ('ontouchstart' in window || navigator.maxTouchPoints > 0) &&
+                    window.matchMedia('(pointer: coarse)').matches;
 
     window.addEventListener('keydown', e => {
       this.keys.add(e.key.toLowerCase());

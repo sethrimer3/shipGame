@@ -1810,19 +1810,31 @@ class Game {
     // ── Danger proximity indicator (red edge glow when an enemy is very close) ──
     if (this.player.alive && !this._paused) {
       /** World units within which the danger glow starts fading in. */
-      const DANGER_INNER_DIST_WORLD = 200;
+      const DANGER_INNER_DIST_WORLD    = 200;
       /** World units at which the danger glow is at maximum intensity. */
-      const DANGER_OUTER_DIST_WORLD = 120;
+      const DANGER_OUTER_DIST_WORLD    = 120;
+      /** Minimum pulse brightness (glow never drops below 55% of max intensity). */
+      const DANGER_PULSE_MIN           = 0.55;
+      /** Amplitude of pulse oscillation on top of DANGER_PULSE_MIN. */
+      const DANGER_PULSE_AMPLITUDE     = 0.45;
+      /** Pulse frequency in Hz. */
+      const DANGER_PULSE_FREQUENCY_HZ  = 2;
+      /** Maximum alpha opacity of the danger overlay at full intensity. */
+      const DANGER_MAX_ALPHA           = 0.5;
+      /** Inner radius of the radial gradient (as fraction of canvas height). */
+      const DANGER_GRADIENT_INNER_RAD  = 0.35;
+      /** Outer radius of the radial gradient (as fraction of max canvas dimension). */
+      const DANGER_GRADIENT_OUTER_RAD  = 0.75;
+
       const nearestSq = this.world.nearestEnemyDistSq(this.player.pos);
       if (nearestSq < DANGER_INNER_DIST_WORLD * DANGER_INNER_DIST_WORLD) {
         const nearestDist = Math.sqrt(nearestSq);
         const intensity = Math.max(0, Math.min(1, 1 - (nearestDist - DANGER_OUTER_DIST_WORLD) / (DANGER_INNER_DIST_WORLD - DANGER_OUTER_DIST_WORLD)));
-        // Pulse: 0.5–1.0 brightness oscillation at ~2 Hz
-        const pulse = 0.55 + Math.abs(Math.sin(this.gameTime * Math.PI * 2)) * 0.45;
-        const alpha = intensity * pulse * 0.5;
+        const pulse = DANGER_PULSE_MIN + Math.abs(Math.sin(this.gameTime * Math.PI * DANGER_PULSE_FREQUENCY_HZ * 2)) * DANGER_PULSE_AMPLITUDE;
+        const alpha = intensity * pulse * DANGER_MAX_ALPHA;
         const grad = ctx.createRadialGradient(
-          canvas.width / 2, canvas.height / 2, canvas.height * 0.35,
-          canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.75,
+          canvas.width / 2, canvas.height / 2, canvas.height * DANGER_GRADIENT_INNER_RAD,
+          canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * DANGER_GRADIENT_OUTER_RAD,
         );
         grad.addColorStop(0, 'rgba(255,0,0,0)');
         grad.addColorStop(1, `rgba(220,0,0,${alpha.toFixed(3)})`);

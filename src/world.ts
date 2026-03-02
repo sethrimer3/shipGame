@@ -1506,6 +1506,18 @@ export class World {
     for (const fm of this.floatingModules) {
       const hpRatio = fm.hp / fm.maxHp;
       const half = fm.size / 2;
+      // Hot ember glow while freshly detached (hpRatio > 0.6) → fades as fragment cools
+      if (hpRatio > 0.35) {
+        const emberAlpha = (hpRatio - 0.35) / 0.65;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowColor = '#ff7700';
+        ctx.shadowBlur  = 8;
+        ctx.fillStyle   = `rgba(255,140,0,${(emberAlpha * 0.45).toFixed(3)})`;
+        ctx.fillRect(fm.pos.x - half - 2, fm.pos.y - half - 2, fm.size + 4, fm.size + 4);
+        ctx.shadowBlur  = 0;
+        ctx.restore();
+      }
       ctx.fillStyle = fm.color;
       ctx.fillRect(fm.pos.x - half, fm.pos.y - half, fm.size, fm.size);
       // Darken progressively as HP drains

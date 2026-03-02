@@ -306,6 +306,7 @@ export class Mothership {
   draw(ctx: CanvasRenderingContext2D): void {
     if (!this.alive) return;
     const half = MODULE_SIZE / 2;
+    const nowSec = performance.now() * 0.001;
 
     // Ominous outer glow
     ctx.save();
@@ -338,6 +339,21 @@ export class Mothership {
         fill = '#ff8800';
       } else {
         fill = '#22dd44'; // drone bay
+      }
+
+      // Weapon modules get a pulsing glow to indicate armed status
+      if (m.type !== 'hull') {
+        const pulseGlow = 0.5 + Math.sin(nowSec * 3.2 + m.col * 0.7 + m.row * 0.5) * 0.35;
+        const glowColor = m.type === 'weapon_laser' ? '#ff2222'
+                        : m.type === 'weapon_rocket' ? '#ff8800' : '#22dd44';
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur  = 8 * pulseGlow;
+        ctx.fillStyle   = `${glowColor}44`;
+        ctx.fillRect(wx - 2, wy - 2, MODULE_SIZE + 4, MODULE_SIZE + 4);
+        ctx.shadowBlur  = 0;
+        ctx.restore();
       }
 
       ctx.fillStyle   = fill;

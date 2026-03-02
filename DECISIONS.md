@@ -1,5 +1,22 @@
 # DECISIONS
 
+## 2026-03-02 — Visual polish pass (Build 49)
+
+### Floating module ember glow (`src/world.ts`)
+- Freshly detached enemy ship modules now glow orange (additive `#ff7700` with `shadowBlur = 8`) when `hpRatio > 0.35`. The glow fades linearly as the fragment cools/dies, giving a visceral sense of hot wreckage spinning through space.
+
+### Gunship engine exhaust (`src/gunship.ts`)
+- Gunships now emit a per-frame cyan engine exhaust trail from the rear engine module position (col=-1), matching the aesthetic already established for drones and interceptors in Build 48. Trail particles are `glow: true` for additive blending.
+
+### Enemy base-class engine exhaust (`src/enemy.ts`)
+- All base `Enemy` ships (Scout → Capital Ship) now emit a glowing cyan exhaust trail while in `chase` or `attack` state. Particles spawn from 2 block-lengths behind the nose, giving each pursuing enemy a visible engine wake that makes combat more dynamic.
+
+### Mothership weapon module pulsing glow (`src/mothership.ts`)
+- Laser modules (`#ff2222`), rocket modules (`#ff8800`), and drone bay modules (`#22dd44`) now render a per-module pulsing `lighter`-composite glow each frame. The pulse frequency and phase offset varies per module column/row, giving motherships a menacing armed appearance with visible weapon "heartbeats".
+
+### Minimap tactical corner ticks (`src/game.ts`)
+- The minimap border now has L-shaped corner tick marks (6px, `rgba(120,220,255,0.7)`, 1.5px line) at all four corners, styled as a tactical HUD display. The main border opacity was also raised slightly (0.35→0.45) for better visibility.
+
 ## 2026-03-02 — Visual polish pass (Build 48)
 
 ### Interceptor engine trail glow + charging aura (`src/interceptor.ts`)

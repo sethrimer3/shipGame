@@ -68,6 +68,24 @@ export class Gunship {
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
 
+    // Engine exhaust trail from rear engine module [-1, 0]
+    if (d > 60 && Math.random() < 30 * dt) {
+      const B = 7;
+      particles.push({
+        pos:      { x: this.pos.x - Math.cos(this.angle) * B, y: this.pos.y - Math.sin(this.angle) * B },
+        vel:      {
+          x: -Math.cos(this.angle) * (40 + Math.random() * 30) + (Math.random() - 0.5) * 20,
+          y: -Math.sin(this.angle) * (40 + Math.random() * 30) + (Math.random() - 0.5) * 20,
+        },
+        color:    '#7fd9ff',
+        radius:   1.5 + Math.random() * 1,
+        lifetime: 0.20,
+        maxLife:  0.20,
+        alpha:    1,
+        glow:     true,
+      });
+    }
+
     // Dual-wing cannon burst when close enough
     this.fireCooldown -= dt;
     if (d < 480 && this.fireCooldown <= 0) {

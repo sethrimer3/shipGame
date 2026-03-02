@@ -225,6 +225,9 @@ export class World {
   /** Accumulated enemy kills – could be used for score */
   kills = 0;
 
+  /** Kill events generated this frame: position + color, consumed by Game for shockwave rings. */
+  killEvents: Array<{ pos: Vec2; color: string }> = [];
+
   constructor() {}
 
   resetForLoop(): void {
@@ -239,6 +242,7 @@ export class World {
     this.floatingModules = [];
     this.looseParticles = [];
     this.kills = 0;
+    this.killEvents = [];
     this.station.reset();
   }
 
@@ -602,6 +606,7 @@ export class World {
     camPos:       Vec2,
     config:       GraphicsConfig,
   ): void {
+    this.killEvents.length = 0;
     const chunks = this._activeChunks(camPos);
     const skipPlanetMolecules = !config.planetMoleculeSimulation;
 
@@ -741,6 +746,7 @@ export class World {
             ));
             if (result.killed) {
               this.kills++;
+              this.killEvents.push({ pos: { x: enemy.pos.x, y: enemy.pos.y }, color: enemy.tier.color });
               player.gainXP(enemy.tier.xpValue);
               floatingTexts.push(makeFloatingText(
                 { x: enemy.pos.x, y: enemy.pos.y - enemy.radius - 18 },
@@ -834,6 +840,7 @@ export class World {
             ));
             if (ms.isDead) {
               this.kills++;
+              this.killEvents.push({ pos: { x: ms.pos.x, y: ms.pos.y }, color: ms.tier.color });
               player.gainXP(ms.tier.xpValue);
               floatingTexts.push(makeFloatingText(
                 { x: ms.pos.x, y: ms.pos.y - 40 },
@@ -876,6 +883,7 @@ export class World {
             const killed = turret.damage(proj.damage, particles, Math.random);
             if (killed) {
               this.kills++;
+              this.killEvents.push({ pos: { x: turret.pos.x, y: turret.pos.y }, color: '#c0392b' });
               player.gainXP(12);
             }
           }
@@ -944,6 +952,7 @@ export class World {
             '#ff4444',
           ));
           this.kills++;
+          this.killEvents.push({ pos: { x: ic.pos.x, y: ic.pos.y }, color: '#ff4444' });
           player.gainXP(ic.xpValue);
         }
       }
@@ -967,6 +976,7 @@ export class World {
             ));
             if (killed) {
               this.kills++;
+              this.killEvents.push({ pos: { x: ic.pos.x, y: ic.pos.y }, color: '#ff4444' });
               player.gainXP(ic.xpValue);
             }
           }
@@ -1003,6 +1013,7 @@ export class World {
             ));
             if (killed) {
               this.kills++;
+              this.killEvents.push({ pos: { x: gs.pos.x, y: gs.pos.y }, color: '#cc8833' });
               player.gainXP(gs.xpValue);
               floatingTexts.push(makeFloatingText(
                 { x: gs.pos.x, y: gs.pos.y - gs.radius - 18 },
@@ -1044,6 +1055,7 @@ export class World {
             ));
             if (killed) {
               this.kills++;
+              this.killEvents.push({ pos: { x: bm.pos.x, y: bm.pos.y }, color: '#9b59b6' });
               player.gainXP(bm.xpValue);
               floatingTexts.push(makeFloatingText(
                 { x: bm.pos.x, y: bm.pos.y - bm.radius - 18 },
@@ -1159,6 +1171,7 @@ export class World {
           ));
           if (killed) {
             this.kills++;
+            this.killEvents.push({ pos: { x: drone.pos.x, y: drone.pos.y }, color: '#ff6060' });
             player.gainXP(drone.xpValue);
           }
         }
@@ -1409,7 +1422,7 @@ export class World {
     { let j = 0; for (let i = 0; i < this.floatingModules.length; i++) { if (this.floatingModules[i].hp > 0) this.floatingModules[j++] = this.floatingModules[i]; } this.floatingModules.length = j; }
   }
 
-  draw(ctx: CanvasRenderingContext2D, camPos: Vec2, viewportWidthPx: number, viewportHeightPx: number): void {
+  draw(ctx: CanvasRenderingContext2D, camPos: Vec2, viewportWidthPx: number, viewportHeightPx: number, gameTimeSec = 0): void {
     const chunks = this._activeChunks(camPos);
     const halfW = viewportWidthPx * 0.5;
     const halfH = viewportHeightPx * 0.5;
@@ -1427,6 +1440,10 @@ export class World {
         if (nb.x + nb.radiusA < minX || nb.x - nb.radiusA > maxX ||
             nb.y + nb.radiusB < minY || nb.y - nb.radiusB > maxY) continue;
         ctx.save();
+        // Subtle breathing animation: each nebula pulses at its own phase
+        const nebulaPhase = (nb.x * 0.0017 + nb.y * 0.0013) % (Math.PI * 2);
+        const nebulaPulse = 0.82 + 0.18 * Math.sin(gameTimeSec * 0.22 + nebulaPhase);
+        ctx.globalAlpha = nebulaPulse;
         ctx.translate(nb.x, nb.y);
         ctx.rotate(nb.angle);
         ctx.scale(nb.radiusA, nb.radiusB);

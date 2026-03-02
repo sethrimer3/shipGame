@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 49;
+const BUILD_NUMBER = 50;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -299,7 +299,11 @@ class Game {
   private static readonly _GRAVITON_RADIUS_WORLD   = 320;
   /** Outward push impulse (world units / s) at the epicentre. */
   private static readonly _GRAVITON_PUSH_FORCE     = 18000;
-  private _shockwaveRings: Array<{ pos: Vec2; currentRadius: number; maxRadius: number; life: number; maxLife: number }> = [];
+  /** Engine exhaust particle colors (outer, mid, hot-core). */
+  private static readonly _EXHAUST_COLOR_OUTER = '#44aaff';
+  private static readonly _EXHAUST_COLOR_MID   = '#88ddff';
+  private static readonly _EXHAUST_COLOR_HOT   = '#cceeff';
+  private _shockwaveRings: Array<{ pos: Vec2; currentRadius: number; maxRadius: number; life: number; maxLife: number; color?: string }> = [];
   /** Level-up expanding golden rings (screen-space). */
   private _levelUpRings: Array<{ life: number; maxLife: number }> = [];
 
@@ -674,6 +678,36 @@ class Game {
     // ── Player ─────────────────────────────────────────────────────
     this.player.update(dt, this.toolbar.selected, this.advancedMovement, this.particles, this.projectiles);
 
+    // ── Engine exhaust particle stream ────────────────────────────────────
+    if (this.player.alive && (this.input.isDown('w') || this.input.isDown('s') || this.input.isDown('a') || this.input.isDown('d'))) {
+      const exhaustAngle    = this.player.angle + Math.PI;
+      const exhaustDistWorld = 22;
+      for (let i = 0; i < 3; i++) {
+        const spread   = (Math.random() - 0.5) * 8;
+        const perpX    = Math.cos(exhaustAngle + Math.PI * 0.5) * spread;
+        const perpY    = Math.sin(exhaustAngle + Math.PI * 0.5) * spread;
+        const ex       = this.player.pos.x + Math.cos(exhaustAngle) * exhaustDistWorld + perpX;
+        const ey       = this.player.pos.y + Math.sin(exhaustAngle) * exhaustDistWorld + perpY;
+        const speed    = 55 + Math.random() * 90;
+        const velAngle = exhaustAngle + (Math.random() - 0.5) * 0.55;
+        const life     = 0.22 + Math.random() * 0.32;
+        const roll     = Math.random();
+        const exhaustColor = roll < 0.35 ? Game._EXHAUST_COLOR_OUTER : roll < 0.68 ? Game._EXHAUST_COLOR_MID : Game._EXHAUST_COLOR_HOT;
+        this.particles.push({
+          pos:      { x: ex, y: ey },
+          vel:      { x: Math.cos(velAngle) * speed, y: Math.sin(velAngle) * speed },
+          color:    exhaustColor,
+          radius:   0.8 + Math.random() * 1.4,
+          lifetime: life,
+          maxLife:  life,
+          alpha:    1,
+          glow:     true,
+          trail:    true,
+          prevPos:  { x: ex, y: ey },
+        });
+      }
+    }
+
     // ── Placer laser (right-click) ──────────────────────────────────
     this._placerCooldown -= dt;
     if (!this.input.mouseRightDown) this._lastPlacedWorldPos = null;
@@ -749,6 +783,18 @@ class Game {
     // ── World / enemies / collisions ────────────────────────────────
     this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position, this._graphicsConfig);
     this._runAutoCrafting();
+
+    // ── Kill shockwave rings ────────────────────────────────────────
+    for (const ke of this.world.killEvents) {
+      this._shockwaveRings.push({
+        pos:           { x: ke.pos.x, y: ke.pos.y },
+        currentRadius: 0,
+        maxRadius:     80,
+        life:          0.55,
+        maxLife:       0.55,
+        color:         ke.color,
+      });
+    }
 
     // ── Personal-best update (on death transition) ──────────────────
     if (this._wasAlive && !this.player.alive) {
@@ -1829,7 +1875,7 @@ class Game {
     // Sun at world origin
     this.sunRenderer.draw(ctx, { x: 0, y: 0 }, 150, this.gameTime, this._graphicsConfig);
 
-    this.world.draw(ctx, this.camera.position, canvas.width, canvas.height);
+    this.world.draw(ctx, this.camera.position, canvas.width, canvas.height, this.gameTime);
 
     for (const beam of this._placementBeams) {
       const ratio = Math.max(0, beam.life / beam.maxLife);
@@ -1867,22 +1913,25 @@ class Game {
     // Floating damage / XP texts (world-space)
     for (const f of this.floatingTexts) drawFloatingText(ctx, f);
 
-    // ── Graviton Pulse shockwave rings ──────────────────────────────
+    // ── Shockwave rings (Graviton Pulse + enemy kill rings) ──────────────────────
     for (const ring of this._shockwaveRings) {
       const progress = 1 - ring.life / ring.maxLife; // 0→1
       const alpha = (1 - progress) * 0.85;
+      const ringColor = ring.color ?? '#80c0ff';
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = `rgba(140,200,255,${alpha.toFixed(3)})`;
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = ring.color ?? 'rgb(140,200,255)';
       ctx.lineWidth   = 3 + (1 - progress) * 8;
-      ctx.shadowColor = '#80c0ff';
+      ctx.shadowColor = ringColor;
       ctx.shadowBlur  = 14;
       ctx.beginPath();
       ctx.arc(ring.pos.x, ring.pos.y, ring.currentRadius, 0, Math.PI * 2);
       ctx.stroke();
       // Inner ring (narrower, brighter)
       ctx.lineWidth  = 1.5;
-      ctx.strokeStyle = `rgba(200,230,255,${(alpha * 0.7).toFixed(3)})`;
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.strokeStyle = ring.color ?? 'rgb(200,230,255)';
       ctx.beginPath();
       ctx.arc(ring.pos.x, ring.pos.y, ring.currentRadius * 0.7, 0, Math.PI * 2);
       ctx.stroke();

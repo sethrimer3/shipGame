@@ -206,6 +206,9 @@ export class StarfieldRenderer {
                     this.renderChromaticAberration(
                         ctx, wrappedX, wrappedY, renderedSizePx, alpha * 0.17, star.colorRgb
                     );
+                    this.renderDiffractionSpikes(
+                        ctx, wrappedX, wrappedY, renderedSizePx, alpha, star.colorRgb, nowSeconds, star.phase
+                    );
                 }
             }
         }
@@ -232,5 +235,54 @@ export class StarfieldRenderer {
         ctx.beginPath();
         ctx.arc(x + offsetPx, y, sizePx * 0.34, 0, Math.PI * 2);
         ctx.fill();
+    }
+
+    private renderDiffractionSpikes(
+        ctx: CanvasRenderingContext2D,
+        x: number,
+        y: number,
+        sizePx: number,
+        alpha: number,
+        colorRgb: [number, number, number],
+        nowSeconds: number,
+        phase: number,
+    ): void {
+        const spikeLenPx = sizePx * 7.5;
+        const shimmer    = 0.72 + 0.28 * Math.sin(phase + nowSeconds * 0.9);
+        const baseAlpha  = alpha * 0.28 * shimmer;
+        const edgeAlpha  = (baseAlpha * 0.55).toFixed(4);
+        const coreAlpha  = baseAlpha.toFixed(4);
+        const r = colorRgb[0];
+        const g = colorRgb[1];
+        const b = colorRgb[2];
+        const colorStr = `${r},${g},${b}`;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+
+        // Four spike directions: horizontal, vertical, diagonal ×2
+        const angles = [0, Math.PI * 0.5, Math.PI * 0.25, Math.PI * 0.75];
+        for (const angle of angles) {
+            const dx = Math.cos(angle);
+            const dy = Math.sin(angle);
+            const grad = ctx.createLinearGradient(
+                x - dx * spikeLenPx, y - dy * spikeLenPx,
+                x + dx * spikeLenPx, y + dy * spikeLenPx,
+            );
+            grad.addColorStop(0,    `rgba(${colorStr},0)`);
+            grad.addColorStop(0.42, `rgba(${colorStr},${edgeAlpha})`);
+            grad.addColorStop(0.5,  `rgba(255,255,255,${coreAlpha})`);
+            grad.addColorStop(0.58, `rgba(${colorStr},${edgeAlpha})`);
+            grad.addColorStop(1,    `rgba(${colorStr},0)`);
+            ctx.strokeStyle = grad;
+            ctx.lineWidth   = Math.max(0.4, sizePx * 0.22);
+            ctx.lineCap     = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x - dx * spikeLenPx, y - dy * spikeLenPx);
+            ctx.lineTo(x + dx * spikeLenPx, y + dy * spikeLenPx);
+            ctx.stroke();
+        }
+
+        ctx.restore();
     }
 }

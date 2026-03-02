@@ -11,7 +11,7 @@ import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
 import { PostProcessRenderer } from './post-process';
 import { GraphicsConfig, GraphicsQuality, QUALITY_PRESETS } from './graphics-settings';
-import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS } from './types';
+import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS, GEM_BONUS_IRON_PER_LEVEL, GEM_BONUS_GOLD_PER_LEVEL, GEM_BONUS_CRYSTAL_PER_LEVEL, GEM_BONUS_HP_PER_LEVEL, GEM_BONUS_SHIELD_PER_LEVEL, GEM_BONUS_WEAPON_PER_LEVEL, GEM_BONUS_MINING_PER_LEVEL, GEM_BONUS_XP_PER_LEVEL } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -131,7 +131,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 39;
+const BUILD_NUMBER = 40;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -1399,19 +1399,19 @@ class Game {
     const level = (id: GemBonusId): number => this._gemBonusLevels[id] ?? 0;
 
     // Permanent stat bonuses
-    this.player.permanentHpBonus             = level('reinforced_hull') * 20;
-    this.player.permanentShieldBonus         = level('power_shields') * 15;
-    this.player.permanentWeaponDamageBonus   = level('combat_training') * 0.12;
-    this.player.permanentMiningBonus         = level('mining_expertise') * 0.20;
-    this.player.permanentXpMultiplier        = 1 + level('void_resonance') * 0.4;
+    this.player.permanentHpBonus             = level('reinforced_hull') * GEM_BONUS_HP_PER_LEVEL;
+    this.player.permanentShieldBonus         = level('power_shields')   * GEM_BONUS_SHIELD_PER_LEVEL;
+    this.player.permanentWeaponDamageBonus   = level('combat_training') * GEM_BONUS_WEAPON_PER_LEVEL / 100;
+    this.player.permanentMiningBonus         = level('mining_expertise') * GEM_BONUS_MINING_PER_LEVEL / 100;
+    this.player.permanentXpMultiplier        = 1 + level('void_resonance') * GEM_BONUS_XP_PER_LEVEL / 100;
   }
 
   /** Add starting resource bonuses to inventory (called after inventory reset). */
   private _addStartingResourceBonuses(): void {
     const level = (id: GemBonusId): number => this._gemBonusLevels[id] ?? 0;
-    this.player.addResource(Material.Iron,    level('iron_cache')        * 15);
-    this.player.addResource(Material.Gold,    level('gold_reserve')      * 8);
-    this.player.addResource(Material.Crystal, level('crystal_stockpile') * 4);
+    this.player.addResource(Material.Iron,    level('iron_cache')        * GEM_BONUS_IRON_PER_LEVEL);
+    this.player.addResource(Material.Gold,    level('gold_reserve')      * GEM_BONUS_GOLD_PER_LEVEL);
+    this.player.addResource(Material.Crystal, level('crystal_stockpile') * GEM_BONUS_CRYSTAL_PER_LEVEL);
   }
 
   /** Attempt to buy one level of a gem bonus. Returns true on success. */

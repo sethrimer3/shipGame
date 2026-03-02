@@ -2,6 +2,8 @@ import { Vec2 } from './types';
 import { GraphicsConfig } from './graphics-settings';
 
 const STAR_WRAP_SIZE = 4000;
+/** Wrap size for Milky Way dust particles (much larger field, very slow parallax). */
+const MILKY_WAY_WRAP_SIZE = 8000;
 
 type ReworkedStarData = {
     x: number;
@@ -36,6 +38,11 @@ export class StarfieldRenderer {
     private readonly reworkedStarCoreCacheByPalette: HTMLCanvasElement[];
     private readonly reworkedStarHaloCacheByPalette: HTMLCanvasElement[];
 
+    // ── Milky Way band data ────────────────────────────────────────────────
+    private readonly _milkyWayDust: Array<{ x: number; y: number; r: number; alpha: number }> = [];
+    /** Pre-rendered soft-glow blob for Milky Way dust. */
+    private readonly _milkyWayBlob: HTMLCanvasElement;
+
     constructor() {
         this.reworkedStarCoreCacheByPalette = this.cinematicOrangePaletteRgb.map(
             (c) => this.createStarCoreCacheCanvas(c)
@@ -43,7 +50,9 @@ export class StarfieldRenderer {
         this.reworkedStarHaloCacheByPalette = this.cinematicOrangePaletteRgb.map(
             (c) => this.createStarHaloCacheCanvas(c)
         );
+        this._milkyWayBlob = this._createMilkyWayBlob();
         this.initializeReworkedParallaxStarLayers();
+        this._initMilkyWayDust();
     }
 
     private initializeReworkedParallaxStarLayers(): void {
@@ -96,6 +105,51 @@ export class StarfieldRenderer {
         return 6;
     }
 
+    // ── Milky Way helpers ──────────────────────────────────────────────────
+    private _createMilkyWayBlob(): HTMLCanvasElement {
+        const size = 32;
+        const canvas = document.createElement('canvas');
+        canvas.width  = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return canvas;
+        const c = size * 0.5;
+        const g = ctx.createRadialGradient(c, c, 0, c, c, c);
+        g.addColorStop(0,   'rgba(200,210,255,1)');
+        g.addColorStop(0.4, 'rgba(180,190,240,0.55)');
+        g.addColorStop(1,   'rgba(160,170,220,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(c, c, c, 0, Math.PI * 2);
+        ctx.fill();
+        return canvas;
+    }
+
+    private _initMilkyWayDust(): void {
+        let seed = 9173;
+        const rng = (): number => {
+            seed = (seed * 1664525 + 1013904223) >>> 0;
+            return seed / 4294967296;
+        };
+        // Band runs at ~35° angle; dust particles cluster near the centreline
+        // using rng()*rng() for a peaked (non-uniform) cross-band distribution.
+        const bandCount = 3800;
+        /** Half-width of the Milky Way band in world units — particles spread up to ±620wu from the centreline. */
+        const BAND_HALF_WIDTH = 620;
+        for (let i = 0; i < bandCount; i++) {
+            const along = (rng() - 0.5) * MILKY_WAY_WRAP_SIZE;
+            const across = (rng() < 0.5 ? -1 : 1) * rng() * rng() * BAND_HALF_WIDTH;
+            const cosA = Math.cos(0.61); // ~35°
+            const sinA = Math.sin(0.61);
+            this._milkyWayDust.push({
+                x: along * cosA - across * sinA,
+                y: along * sinA + across * cosA,
+                r: 1.8 + rng() * 5.5,
+                alpha: 0.04 + rng() * 0.10,
+            });
+        }
+    }
+
     private createStarCoreCacheCanvas(colorRgb: [number, number, number]): HTMLCanvasElement {
         const canvas = document.createElement('canvas');
         canvas.width = 64;
@@ -145,9 +199,37 @@ export class StarfieldRenderer {
         const centerY = screenHeight * 0.5;
         const wrapSpanX = centerX * 2 + STAR_WRAP_SIZE;
         const wrapSpanY = centerY * 2 + STAR_WRAP_SIZE;
+        const milkyWrapSpanX = centerX * 2 + MILKY_WAY_WRAP_SIZE;
+        const milkyWrapSpanY = centerY * 2 + MILKY_WAY_WRAP_SIZE;
         const cameraX = cameraPos.x;
         const cameraY = cameraPos.y;
         const nowSeconds = performance.now() * 0.001;
+
+        // ── Milky Way dust band (drawn first, deepest background) ──────────
+        if (config.starHalos) {
+            const milkyParallaxX = cameraX * 0.08;
+            const milkyParallaxY = cameraY * 0.08;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            const drawCount = Math.ceil(this._milkyWayDust.length * config.starCountMultiplier);
+            for (let i = 0; i < drawCount; i++) {
+                const d = this._milkyWayDust[i];
+                const screenX = centerX + (d.x - milkyParallaxX);
+                const screenY = centerY + (d.y - milkyParallaxY);
+                const wrappedX = ((screenX + centerX) % milkyWrapSpanX) - centerX;
+                const wrappedY = ((screenY + centerY) % milkyWrapSpanY) - centerY;
+                if (wrappedX < -d.r - 8 || wrappedX > screenWidth + d.r + 8 ||
+                    wrappedY < -d.r - 8 || wrappedY > screenHeight + d.r + 8) continue;
+                ctx.globalAlpha = d.alpha;
+                ctx.drawImage(
+                    this._milkyWayBlob,
+                    wrappedX - d.r, wrappedY - d.r,
+                    d.r * 2, d.r * 2,
+                );
+            }
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
 
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';

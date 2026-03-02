@@ -351,6 +351,23 @@ export class Asteroid {
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
+    // Subtle ambient glow around the asteroid cluster.
+    // The 0.72 multiplier keeps the glow radius ~28% smaller than the bounding box,
+    // centering the gradient over the occupied blocks rather than extending far into space.
+    const c = this.centre;
+    const glowR = Math.max(this.width, this.height) * 0.72;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const ambientGrad = ctx.createRadialGradient(c.x, c.y, glowR * 0.15, c.x, c.y, glowR);
+    ambientGrad.addColorStop(0,   'rgba(100,140,200,0.08)');
+    ambientGrad.addColorStop(0.5, 'rgba(80,110,180,0.04)');
+    ambientGrad.addColorStop(1,   'rgba(60,90,160,0)');
+    ctx.fillStyle = ambientGrad;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, glowR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     for (const b of this.blocks) {
       if (b.alive) b.draw(ctx, this.pos.x, this.pos.y);
     }

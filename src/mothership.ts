@@ -307,6 +307,20 @@ export class Mothership {
     if (!this.alive) return;
     const half = MODULE_SIZE / 2;
 
+    // Ominous outer glow
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const glowR = this.tier.gridRadius * MODULE_SIZE + 20;
+    const glow  = ctx.createRadialGradient(this.pos.x, this.pos.y, 0, this.pos.x, this.pos.y, glowR);
+    glow.addColorStop(0,   `${this.tier.color}55`);
+    glow.addColorStop(0.5, `${this.tier.color}22`);
+    glow.addColorStop(1,   `${this.tier.color}00`);
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(this.pos.x, this.pos.y, glowR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     for (const m of this.modules) {
       if (!m.alive) continue;
       const wx = this.pos.x + m.col * MODULE_SIZE - half;

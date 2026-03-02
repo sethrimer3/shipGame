@@ -1,6 +1,53 @@
 # DECISIONS
 
-## 2026-03-02 — Visual overhaul + Graviton Pulse + smaller planets
+## 2026-03-02 — Visual polish pass (Build 46)
+
+### Space background radial gradient (`src/game.ts`)
+- Replaced the flat `#06080f` fill with a `createRadialGradient` centred on the viewport, going from `#0b0e1a` (centre) to `#03050d` (edges).
+- Creates a subtle sense of depth and focal pull toward the screen centre without adding extra geometry.
+
+### Enhanced engine exhaust (`src/player.ts`)
+- Replaced the single cyan `fillRect` with a three-layer `lighter`-blended flame:
+  - **Wide cone** (blue-30% alpha) — outer glow body that scales with engine count.
+  - **Mid flame** (cyan-72% alpha) — main visible exhaust.
+  - **White-hot inner core** (95% alpha) — bright hotspot tip closest to the engine nozzle.
+- Uses `globalCompositeOperation = 'lighter'` so the layers add colour instead of painting over each other.
+
+### Enhanced shield bubble (`src/player.ts`)
+- Replaced the single thin stroke with a two-layer bubble: a wide soft `lighter`-blended glow ring + a sharper inner stroke with `shadowBlur` proportional to shield ratio.
+- Gives the shield a physical "energy field" appearance that dims naturally as HP drops.
+
+### Projectile velocity streak trail (`src/projectile.ts`)
+- `Projectile.draw()` now draws a semi-transparent lineTo stroke from `prevPos` to `pos` before the solid core (lineWidth = radius × 1.4, alpha 0.5, `shadowBlur` 6).
+- The bright core renders on top with `shadowBlur = 12`, and a soft outer halo at `globalAlpha = 0.28` replaces the old manual radius-2.5 circle hack.
+
+### Level-up expanding rings (`src/game.ts`)
+- On level-up, three cascading golden rings (`_levelUpRings` array) are spawned with staggered `maxLife` values.
+- Each ring expands from radius 30 to 230 px (screen-space) over its lifetime, fading out with a `lighter`-blended gold stroke and `shadowBlur = 18`.
+- A light camera shake (1.5 units) accompanies the ring burst.
+
+### Station core pulsing glow (`src/station.ts`)
+- Infinity-pattern center modules now emit a per-module radial gradient glow blended with `lighter`, pulsing at ~1.8 Hz (using `performance.now()`).
+- The modules themselves shimmer slightly (brightness varies ±7% per-module using position-based phase offset).
+- Station turrets now draw with `shadowBlur = 8` for a subtle defensive aura.
+
+### Mothership ominous glow (`src/mothership.ts`)
+- Before rendering modules, a large `lighter`-blended radial gradient glow is drawn centred on the mothership position, tinted with the tier's color.
+- Radius scales to `gridRadius × MODULE_SIZE + 20` so larger motherships have proportionally bigger halos.
+
+### Enhanced resource & health pickups (`src/world.ts`)
+- **Resource pickups** now render as a spinning diamond shape (rotates at 1.8 rad/s with per-pickup phase offset) with an outer soft halo ring and a bright inner diamond highlight.
+- **Health pickups** now have an outer glow ring pulse alongside the cross symbol; the cross center has a pale inner highlight for contrast.
+- Both use `nowSec` (computed once per `draw()`) for consistent per-second animation.
+
+### CSS HUD polish (`style.css`)
+- HUD bars now have `box-shadow` glows matching their color (health red, shield blue, XP yellow, overheat orange).
+- `#hud-top` gains a subtle blue-tinted bottom border and `backdrop-filter: blur(4px)`.
+- Level display has a golden text-shadow glow.
+- Notification element styled with a blue border, `text-shadow`, and `box-shadow` for a premium feel.
+- Toolbar gets a blue-tinted border glow and `inset` highlight.
+
+
 
 ### Planetary atmospheric glow (`src/planet.ts`)
 - Each planet now renders a soft radial gradient halo in the `draw()` call using its cached `_minimapColor` as the tint.

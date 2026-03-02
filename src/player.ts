@@ -1097,22 +1097,54 @@ export class Player {
 
     ctx.shadowBlur = 0;
 
-    // Engine exhaust flame
+    // Engine exhaust flame — multi-layer glow
     if (thrusting) {
-      ctx.fillStyle = 'rgba(100, 200, 255, 0.75)';
-      ctx.fillRect(-2 * B - B / 2, -B / 2, B, B);
+      const engineModuleCount = Math.max(1, this.modules.engine);
+      // Outer wide glow cone
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.shadowColor = '#4af';
+      ctx.shadowBlur  = 22;
+      ctx.fillStyle   = 'rgba(30, 130, 255, 0.30)';
+      const w1 = B * 1.8 + engineModuleCount * 2;
+      ctx.fillRect(-3 * B - B * 0.3, -B * 0.6, w1, B * 1.2);
+      // Mid flame
+      ctx.shadowBlur = 14;
+      ctx.fillStyle  = 'rgba(100, 200, 255, 0.72)';
+      const w2 = B * 1.1 + engineModuleCount * 1.5;
+      ctx.fillRect(-3 * B,          -B * 0.38, w2, B * 0.76);
+      // Hot inner core (white-hot)
+      ctx.shadowBlur = 8;
+      ctx.fillStyle  = 'rgba(200, 235, 255, 0.95)';
+      ctx.fillRect(-2 * B - B * 0.3, -B * 0.18, B * 0.55, B * 0.36);
+      ctx.shadowBlur = 0;
+      ctx.restore();
     }
 
     ctx.restore();
 
-    // Shield bubble
+    // Shield bubble — animated pulsing ring
     if (this.shield > 0) {
-      const ratio = this.shield / this.maxShield;
+      const ratio   = this.shield / this.maxShield;
+      const baseRad = SHIP_RADIUS + 6;
+      // Outer glow
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
       ctx.beginPath();
-      ctx.arc(this.pos.x, this.pos.y, SHIP_RADIUS + 6, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(52, 152, 219, ${ratio * 0.6})`;
-      ctx.lineWidth   = 2;
+      ctx.arc(this.pos.x, this.pos.y, baseRad + 3, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(40, 120, 240, ${ratio * 0.25})`;
+      ctx.lineWidth   = 6;
       ctx.stroke();
+      ctx.restore();
+      // Sharp ring
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y, baseRad, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(80, 180, 255, ${ratio * 0.75})`;
+      ctx.lineWidth   = 1.5;
+      ctx.shadowColor = '#60b4ff';
+      ctx.shadowBlur  = 8 * ratio;
+      ctx.stroke();
+      ctx.shadowBlur  = 0;
     }
   }
 

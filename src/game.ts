@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 45;
+const BUILD_NUMBER = 46;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -300,6 +300,8 @@ class Game {
   /** Outward push impulse (world units / s) at the epicentre. */
   private static readonly _GRAVITON_PUSH_FORCE     = 18000;
   private _shockwaveRings: Array<{ pos: Vec2; currentRadius: number; maxRadius: number; life: number; maxLife: number }> = [];
+  /** Level-up expanding golden rings (screen-space). */
+  private _levelUpRings: Array<{ life: number; maxLife: number }> = [];
 
   // ── Personal best stats (persisted via localStorage) ─────────────────────────
   private _pbKills    = 0;
@@ -789,6 +791,21 @@ class Game {
     if (this.player.leveledUp) {
       this.player.leveledUp = false;
       this.hud.showMessage(`⬆ Level ${this.player.level}! HP +10  Shield +5`, 3);
+      // Spawn three cascading level-up rings
+      for (let i = 0; i < 3; i++) {
+        this._levelUpRings.push({ life: 0.85 + i * 0.12, maxLife: 0.85 + i * 0.12 });
+      }
+      this.camera.shake(1.5);
+    }
+
+    // ── Level-up rings update ────────────────────────────────────
+    {
+      let lr = 0;
+      for (let i = 0; i < this._levelUpRings.length; i++) {
+        this._levelUpRings[i].life -= dt;
+        if (this._levelUpRings[i].life > 0) this._levelUpRings[lr++] = this._levelUpRings[i];
+      }
+      this._levelUpRings.length = lr;
     }
 
     // ── Camera shake on damage ───────────────────────────────────
@@ -1792,8 +1809,15 @@ class Game {
     const { ctx, canvas } = this;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Background
-    ctx.fillStyle = '#06080f';
+    // Background — deep space radial gradient for depth
+    const bgGrad = ctx.createRadialGradient(
+      canvas.width * 0.5, canvas.height * 0.5, 0,
+      canvas.width * 0.5, canvas.height * 0.5, Math.max(canvas.width, canvas.height) * 0.75,
+    );
+    bgGrad.addColorStop(0,   '#0b0e1a');
+    bgGrad.addColorStop(0.5, '#070b14');
+    bgGrad.addColorStop(1,   '#03050d');
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Parallax starfield (screen-space, before camera transform)
@@ -1890,6 +1914,26 @@ class Game {
 
     // ── Post-process shaders (vignette, bloom) ─────────────────────
     this.postProcess.draw(ctx, canvas, this._graphicsConfig);
+
+    // ── Level-up rings (screen-space, centred on player screen pos) ──
+    if (this._levelUpRings.length > 0 && this.player.alive) {
+      const playerScreen = this.camera.worldToScreen(this.player.pos);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const ring of this._levelUpRings) {
+        const progress = 1 - ring.life / ring.maxLife; // 0→1 as ring expands
+        const radius   = 30 + progress * 200;
+        const alpha    = (1 - progress) * 0.9;
+        ctx.strokeStyle = `rgba(255,220,60,${alpha.toFixed(3)})`;
+        ctx.lineWidth   = 3 * (1 - progress) + 1;
+        ctx.shadowColor = '#ffe060';
+        ctx.shadowBlur  = 18;
+        ctx.beginPath();
+        ctx.arc(playerScreen.x, playerScreen.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // ── Minimap ────────────────────────────────────────────────────
     if (this.player.alive) {

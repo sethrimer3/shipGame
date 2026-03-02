@@ -1550,44 +1550,88 @@ export class World {
     this.station.draw(ctx);
 
     // ── Resource pickups ───────────────────────────────────────────
-    const now = Date.now();
+    const now     = Date.now();
+    const nowSec  = now * 0.001;
     for (const p of this.pickups) {
       const fade  = Math.min(1, p.lifetime / 3); // fade out last 3 s
-      const pulse = 0.65 + Math.sin(now / 300) * 0.25;
+      const spin  = nowSec * 1.8 + (p.pos.x + p.pos.y) * 0.02; // per-pickup phase offset
+      const pulse = 0.72 + Math.sin(nowSec * 3.0 + p.pos.x * 0.01) * 0.18;
       const props = MATERIAL_PROPS[p.material];
+      const S     = 5.5; // half-size of the diamond
       ctx.save();
       ctx.globalAlpha = fade * pulse;
+      // Soft outer halo
       ctx.shadowColor = props.color;
+      ctx.shadowBlur  = 14;
+      ctx.strokeStyle = props.color;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, S * 1.9, 0, Math.PI * 2);
+      ctx.stroke();
+      // Rotating diamond core
+      ctx.translate(p.pos.x, p.pos.y);
+      ctx.rotate(spin);
+      ctx.fillStyle   = props.color;
       ctx.shadowBlur  = 8;
-      ctx.fillStyle = props.color;
-      ctx.fillRect(p.pos.x - 5, p.pos.y - 5, 10, 10);
-      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(0,  -S);
+      ctx.lineTo(S,   0);
+      ctx.lineTo(0,   S);
+      ctx.lineTo(-S,  0);
+      ctx.closePath();
+      ctx.fill();
+      // Bright inner highlight
+      ctx.shadowBlur  = 0;
+      ctx.fillStyle   = 'rgba(255,255,255,0.55)';
+      const h = S * 0.35;
+      ctx.beginPath();
+      ctx.moveTo(0, -h);
+      ctx.lineTo(h,  0);
+      ctx.lineTo(0,  h);
+      ctx.lineTo(-h, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      // Label
+      ctx.save();
       ctx.globalAlpha = fade * 0.85;
-      ctx.fillStyle = props.color;
-      ctx.font = '9px Courier New';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 9);
+      ctx.fillStyle   = props.color;
+      ctx.font        = '9px Courier New';
+      ctx.textAlign   = 'center';
+      ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 12);
       ctx.restore();
     }
 
     // ── Health pickups ─────────────────────────────────────────────
     for (const h of this.healthPickups) {
       const fade  = Math.min(1, h.lifetime / 3);
-      const pulse = 0.7 + Math.sin(now / 250) * 0.3;
+      const pulse = 0.72 + Math.sin(nowSec * 4.0 + h.pos.x * 0.01) * 0.22;
       ctx.save();
       ctx.globalAlpha = fade * pulse;
-      ctx.shadowColor = '#ff4455';
-      ctx.shadowBlur  = 10;
-      ctx.fillStyle   = '#ff4455';
-      // Draw a red cross / plus symbol
+      // Outer glow ring
+      ctx.shadowColor = '#ff5566';
+      ctx.shadowBlur  = 16;
+      ctx.strokeStyle = '#ff5566';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.arc(h.pos.x, h.pos.y, 9, 0, Math.PI * 2);
+      ctx.stroke();
+      // Cross symbol
+      ctx.fillStyle  = '#ff4455';
+      ctx.shadowBlur = 10;
       ctx.fillRect(h.pos.x - 6, h.pos.y - 2, 12, 4); // horizontal bar
       ctx.fillRect(h.pos.x - 2, h.pos.y - 6, 4, 12); // vertical bar
-      ctx.shadowBlur  = 0;
+      // Bright cross center
+      ctx.shadowBlur = 0;
+      ctx.fillStyle  = 'rgba(255,200,200,0.7)';
+      ctx.fillRect(h.pos.x - 2, h.pos.y - 2, 4, 4);
+      ctx.restore();
+      ctx.save();
       ctx.globalAlpha = fade * 0.85;
       ctx.fillStyle   = '#ffaaaa';
       ctx.font        = '9px Courier New';
       ctx.textAlign   = 'center';
-      ctx.fillText(`+${h.amount} HP`, h.pos.x, h.pos.y - 11);
+      ctx.fillText(`+${h.amount} HP`, h.pos.x, h.pos.y - 14);
       ctx.restore();
     }
 

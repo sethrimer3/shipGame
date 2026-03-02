@@ -161,9 +161,35 @@ export class SpaceStation {
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
+    const nowSec = performance.now() * 0.001;
+
+    // ── Infinity-module core glow (pulsing) ────────────────────────
+    const pulseGlow = 0.55 + Math.sin(nowSec * 1.8) * 0.25;
+    for (const module of this.modules) {
+      if (!module.alive || !module.isInfinityModule) continue;
+      const half = BLOCK_SIZE / 2;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const grad = ctx.createRadialGradient(module.pos.x, module.pos.y, 0, module.pos.x, module.pos.y, BLOCK_SIZE * 1.6);
+      grad.addColorStop(0,   `rgba(210,240,255,${(pulseGlow * 0.55).toFixed(3)})`);
+      grad.addColorStop(0.5, `rgba(120,200,255,${(pulseGlow * 0.22).toFixed(3)})`);
+      grad.addColorStop(1,   'rgba(80,160,255,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(module.pos.x, module.pos.y, BLOCK_SIZE * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     for (const module of this.modules) {
       if (!module.alive) continue;
-      ctx.fillStyle = module.isInfinityModule ? 'rgba(255,255,255,0.92)' : 'rgba(120,180,220,0.65)';
+      if (module.isInfinityModule) {
+        // Brighter center modules with a subtle shimmer
+        const shimmer = 0.88 + Math.sin(nowSec * 2.5 + module.pos.x * 0.05) * 0.07;
+        ctx.fillStyle = `rgba(220,240,255,${shimmer.toFixed(3)})`;
+      } else {
+        ctx.fillStyle = 'rgba(120,180,220,0.65)';
+      }
       ctx.fillRect(module.pos.x - BLOCK_SIZE / 2, module.pos.y - BLOCK_SIZE / 2, BLOCK_SIZE, BLOCK_SIZE);
       if (!module.isInfinityModule && Number.isFinite(module.maxHp)) {
         const hpRatio = Math.max(0, module.hp / module.maxHp);
@@ -172,10 +198,16 @@ export class SpaceStation {
       }
     }
     for (const turret of this.turrets) {
-      ctx.fillStyle = 'rgba(165,225,255,0.9)';
+      // Turret glow
+      ctx.save();
+      ctx.shadowColor = 'rgba(165,225,255,0.8)';
+      ctx.shadowBlur  = 8;
+      ctx.fillStyle   = 'rgba(165,225,255,0.9)';
       ctx.beginPath();
       ctx.arc(turret.pos.x, turret.pos.y, 8, 0, Math.PI * 2);
       ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
     }
   }
 }

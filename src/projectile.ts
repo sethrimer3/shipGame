@@ -36,20 +36,40 @@ export class Projectile {
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
+    // Velocity streak trail
+    const dx = this.pos.x - this.prevPos.x;
+    const dy = this.pos.y - this.prevPos.y;
+    const streakLen = Math.sqrt(dx * dx + dy * dy);
+    if (streakLen > 1) {
+      ctx.save();
+      ctx.strokeStyle = this.color;
+      ctx.lineWidth   = this.radius * 1.4;
+      ctx.lineCap     = 'round';
+      ctx.globalAlpha = 0.5;
+      ctx.shadowColor = this.color;
+      ctx.shadowBlur  = 6;
+      ctx.beginPath();
+      ctx.moveTo(this.prevPos.x, this.prevPos.y);
+      ctx.lineTo(this.pos.x, this.pos.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Bright core
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur  = 12;
     ctx.beginPath();
     ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
     ctx.fillStyle = this.color;
     ctx.fill();
-
-    // Glow effect
-    ctx.beginPath();
-    ctx.arc(this.pos.x, this.pos.y, this.radius * 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = this.color.replace(')', ', 0.3)').replace('rgb(', 'rgba(');
-    // Fallback glow using shadow
-    ctx.shadowColor = this.color;
-    ctx.shadowBlur  = 8;
-    ctx.fill();
+    // Outer soft glow halo
     ctx.shadowBlur  = 0;
+    ctx.globalAlpha = 0.28;
+    ctx.beginPath();
+    ctx.arc(this.pos.x, this.pos.y, this.radius * 2.8, 0, Math.PI * 2);
+    ctx.fillStyle = this.color;
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 }
 

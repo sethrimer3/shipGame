@@ -1,6 +1,32 @@
 # DECISIONS
 
-## 2026-02-26 — Planet terrain overhaul + active molecule simulation
+## 2026-03-02 — Visual overhaul + Graviton Pulse + smaller planets
+
+### Planetary atmospheric glow (`src/planet.ts`)
+- Each planet now renders a soft radial gradient halo in the `draw()` call using its cached `_minimapColor` as the tint.
+- The atmosphere extends from 88% to 128% of the planet radius with a three-stop gradient (transparent inner → tinted middle → transparent outer) blended with `lighter` composite operation.
+- The halo color naturally reflects the dominant surface material (sandy orange for dune worlds, blue-green for water worlds, red for lava-heavy planets).
+
+### Procedural nebula patches in world chunks (`src/world.ts`)
+- Each world chunk may generate 0–2 elliptical nebula blobs from a fixed six-color palette.
+- Nebula blobs are stored as `NebulaPatch` data (position, semi-axes, rotation, inner/outer RGBA) in the `Chunk` interface so they are deterministic per seed and never reallocated.
+- Drawn at the start of `World.draw()` using `globalCompositeOperation = 'lighter'` so they add color to the background without obscuring geometry.
+- Ellipses use `ctx.scale(radiusA, radiusB)` to avoid creating path objects per frame.
+
+### Planet size reduction (`src/world.ts`)
+- `PLANET_MIN_RADIUS` reduced from 240 to 190 world units (~21%).
+- `PLANET_MAX_RADIUS` reduced from 480 to 380 world units (~21%).
+- Directly reduces molecule count per planet (scales quadratically with radius), cutting per-frame simulation and draw cost for planet-heavy views.
+
+### Graviton Pulse ability — G key (`src/player.ts`, `src/game.ts`, `src/world.ts`)
+- Press **G** to fire a Graviton Pulse: a radial shockwave (320 wu radius) that pushes all nearby enemies outward.
+- Costs 45 overheat units; has a 12-second cooldown tracked in `player.gravitonPulseCooldownSec`.
+- `Player.tryGravitonPulse(overheatCost)` returns `true` on success and starts the cooldown.
+- `World.applyGravitonPulse(pos, radiusWorld, pushForce)` iterates cached active chunks and applies an inverse-distance impulse to all alive enemy `vel` vectors; returns the count of enemies pushed.
+- Visual: an expanding double-ring stroke drawn in world-space (`_shockwaveRings` array in `Game`), blended with `lighter`, fading over 0.7 s.
+- HUD: a small text + progress bar in the bottom-right shows `⚛ [G] READY` or `⚛ [G] Ns` for remaining cooldown.
+
+
 
 ### Organic dunes, trough water, and mountain peaks (`src/planet.ts`)
 - Planet terrain now uses deterministic angular terrain samples (`TERRAIN_SAMPLE_COUNT = 192`) generated from the planet RNG seed to build dune-like sand height variation.

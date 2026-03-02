@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 44;
+const BUILD_NUMBER = 45;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -290,6 +290,16 @@ class Game {
   private static readonly _SHIELD_BOOST_OVERHEAT_COST = 35;
   /** Shield points restored per boost activation. */
   private static readonly _SHIELD_BOOST_RESTORE_AMT   = 40;
+
+  // ── Graviton Pulse (G key) ────────────────────────────────────────────────
+  private _gravitonKeyHeld = false;
+  /** Overheat units consumed per Graviton Pulse activation. */
+  private static readonly _GRAVITON_OVERHEAT_COST  = 45;
+  /** Radius (world units) of the Graviton Pulse shockwave. */
+  private static readonly _GRAVITON_RADIUS_WORLD   = 320;
+  /** Outward push impulse (world units / s) at the epicentre. */
+  private static readonly _GRAVITON_PUSH_FORCE     = 18000;
+  private _shockwaveRings: Array<{ pos: Vec2; currentRadius: number; maxRadius: number; life: number; maxLife: number }> = [];
 
   // ── Personal best stats (persisted via localStorage) ─────────────────────────
   private _pbKills    = 0;
@@ -614,6 +624,36 @@ class Game {
     }
     if (!this.input.isDown('e')) this._shieldBoostKeyHeld = false;
 
+    // ── Graviton Pulse (G key) ──────────────────────────────────────
+    if (this.input.isDown('g') && !this._gravitonKeyHeld) {
+      this._gravitonKeyHeld = true;
+      if (this.player.gravitonPulseCooldownSec > 0) {
+        const remainingCooldownSec = Math.ceil(this.player.gravitonPulseCooldownSec);
+        this.hud.showMessage(`Graviton Pulse — cooldown ${remainingCooldownSec}s`, 1.2);
+      } else {
+        const fired = this.player.tryGravitonPulse(Game._GRAVITON_OVERHEAT_COST);
+        if (fired) {
+          this.world.applyGravitonPulse(
+            this.player.pos,
+            Game._GRAVITON_RADIUS_WORLD,
+            Game._GRAVITON_PUSH_FORCE,
+          );
+          this._shockwaveRings.push({
+            pos:           { x: this.player.pos.x, y: this.player.pos.y },
+            currentRadius: 0,
+            maxRadius:     Game._GRAVITON_RADIUS_WORLD,
+            life:          0.7,
+            maxLife:       0.7,
+          });
+          this.camera.shake(2.5);
+          this.hud.showMessage('⚛ Graviton Pulse!', 1.5);
+        } else {
+          this.hud.showMessage('Not enough energy — charge overheat first', 1.5);
+        }
+      }
+    }
+    if (!this.input.isDown('g')) this._gravitonKeyHeld = false;
+
     // ── Toolbar navigation ──────────────────────────────────────────
     const scroll = this.input.consumeScroll();
     if (scroll !== 0) {
@@ -781,6 +821,16 @@ class Game {
       if (this.floatingTexts[i].lifetime > 0) this.floatingTexts[ft++] = this.floatingTexts[i];
     }
     this.floatingTexts.length = ft;
+
+    // ── Shockwave rings (Graviton Pulse visual) ─────────────────────
+    let sr = 0;
+    for (let i = 0; i < this._shockwaveRings.length; i++) {
+      const ring = this._shockwaveRings[i];
+      ring.life -= dt;
+      ring.currentRadius = ring.maxRadius * (1 - ring.life / ring.maxLife);
+      if (ring.life > 0) this._shockwaveRings[sr++] = ring;
+    }
+    this._shockwaveRings.length = sr;
 
     // ── Camera ─────────────────────────────────────────────────────
     this.camera.follow(this.player.pos, dt);
@@ -1793,6 +1843,28 @@ class Game {
     // Floating damage / XP texts (world-space)
     for (const f of this.floatingTexts) drawFloatingText(ctx, f);
 
+    // ── Graviton Pulse shockwave rings ──────────────────────────────
+    for (const ring of this._shockwaveRings) {
+      const progress = 1 - ring.life / ring.maxLife; // 0→1
+      const alpha = (1 - progress) * 0.85;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(140,200,255,${alpha.toFixed(3)})`;
+      ctx.lineWidth   = 3 + (1 - progress) * 8;
+      ctx.shadowColor = '#80c0ff';
+      ctx.shadowBlur  = 14;
+      ctx.beginPath();
+      ctx.arc(ring.pos.x, ring.pos.y, ring.currentRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner ring (narrower, brighter)
+      ctx.lineWidth  = 1.5;
+      ctx.strokeStyle = `rgba(200,230,255,${(alpha * 0.7).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(ring.pos.x, ring.pos.y, ring.currentRadius * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Player
     if (this.player.alive) this.player.draw(ctx);
 
@@ -1885,6 +1957,27 @@ class Game {
       ctx.fillStyle = 'rgba(255,255,255,0.45)';
       // Position to the left of the minimap (SIZE=150 + MARGIN=14 + small gap)
       ctx.fillText(`SPD ${spd}`, canvas.width - 170, canvas.height - 14);
+
+      // ── Graviton Pulse cooldown indicator ─────────────────────────
+      const pcd = this.player.gravitonPulseCooldownSec;
+      const pcdMax = this.player.gravitonPulseMaxCooldownSec;
+      if (pcd > 0) {
+        ctx.fillStyle = 'rgba(120,180,255,0.65)';
+        ctx.fillText(`⚛ [G] ${Math.ceil(pcd)}s`, canvas.width - 170, canvas.height - 28);
+      } else {
+        ctx.fillStyle = 'rgba(120,200,255,0.85)';
+        ctx.fillText('⚛ [G] READY', canvas.width - 170, canvas.height - 28);
+      }
+      // Small progress bar
+      const barW = 100;
+      const barX = canvas.width - 170 - barW;
+      const barY = canvas.height - 36;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(barX, barY, barW, 3);
+      const readyRatio = 1 - pcd / pcdMax;
+      ctx.fillStyle = readyRatio >= 1 ? 'rgba(100,200,255,0.9)' : 'rgba(80,140,220,0.7)';
+      ctx.fillRect(barX, barY, barW * readyRatio, 3);
+
       ctx.restore();
     }
 

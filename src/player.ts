@@ -193,6 +193,11 @@ export class Player {
   /** Permanent weapon fire-rate bonus (additive fraction, e.g. 0.08 = +8%). */
   permanentFireRateBonus = 0;
 
+  /** Cooldown remaining (seconds) before Graviton Pulse can be used again. */
+  gravitonPulseCooldownSec = 0;
+  /** Maximum cooldown between Graviton Pulse uses (seconds). */
+  readonly gravitonPulseMaxCooldownSec = 12;
+
   constructor(
     private readonly input:    InputManager,
     private readonly camera:   Camera,
@@ -497,6 +502,18 @@ export class Player {
     return healed;
   }
 
+  /**
+   * Attempt to fire a Graviton Pulse.
+   * Consumes overheat energy; returns true if the pulse was fired, false otherwise.
+   */
+  tryGravitonPulse(overheatCostUnits: number): boolean {
+    if (this.gravitonPulseCooldownSec > 0) return false;
+    if (this.overheatMeter < overheatCostUnits) return false;
+    this.overheatMeter -= overheatCostUnits;
+    this.gravitonPulseCooldownSec = this.gravitonPulseMaxCooldownSec;
+    return true;
+  }
+
   equipItem(slotIndex: number, item: ToolbarItemDef): void {
     this.equippedItems[slotIndex] = item;
     // Apply passive upgrades immediately
@@ -779,6 +796,7 @@ export class Player {
 
     // ── Damage flash countdown ────────────────────────────────────
     if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
+    if (this.gravitonPulseCooldownSec > 0) this.gravitonPulseCooldownSec = Math.max(0, this.gravitonPulseCooldownSec - dt);
 
     // ── Nanobot repair (core → outward by orthogonal distance) ───────
     this._applyNanobotRepair(dt);

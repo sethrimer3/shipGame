@@ -718,6 +718,23 @@ export class World {
                   maxLife:  PICKUP_LIFETIME,
                 });
               }
+              // ── Gem drop (deep-zone enemies) ───────────────────────
+              const dropDist = len(enemy.pos);
+              const GEM_DROP_CHANCE = dropDist >= 10000 ? 0.12 : dropDist >= 5000 ? 0.06 : dropDist >= 2000 ? 0.03 : 0;
+              if (GEM_DROP_CHANCE > 0 && Math.random() < GEM_DROP_CHANCE) {
+                const gem = pickGem(dropDist, Math.random);
+                if (gem !== null) {
+                  const ang = Math.random() * Math.PI * 2;
+                  this.pickups.push({
+                    pos:      { x: enemy.pos.x, y: enemy.pos.y },
+                    vel:      { x: Math.cos(ang) * 60, y: Math.sin(ang) * 60 },
+                    material: gem,
+                    qty:      1,
+                    lifetime: PICKUP_LIFETIME,
+                    maxLife:  PICKUP_LIFETIME,
+                  });
+                }
+              }
               // ── Health pack drop (15% chance) ──────────────────────
               if (Math.random() < HEALTH_DROP_CHANCE) {
                 const healAmount = 10 + Math.floor(enemy.tier.xpValue * HEALTH_DROP_XP_MULTIPLIER);

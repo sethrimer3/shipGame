@@ -475,7 +475,9 @@ export type GemBonusId =
   | 'power_shields'
   | 'combat_training'
   | 'mining_expertise'
-  | 'void_resonance';
+  | 'void_resonance'
+  | 'hull_regen'
+  | 'engine_overdrive';
 
 export interface GemBonusDef {
   id:          GemBonusId;
@@ -498,6 +500,10 @@ export const GEM_BONUS_WEAPON_PER_LEVEL  = 12;
 export const GEM_BONUS_MINING_PER_LEVEL  = 20;
 /** Additive XP multiplier in percent per level (e.g. 40 = +40%). */
 export const GEM_BONUS_XP_PER_LEVEL      = 40;
+/** Passive hull HP regeneration per second per level. */
+export const GEM_BONUS_HP_REGEN_PER_LEVEL = 1;
+/** Additive engine top-speed bonus per level in percent (e.g. 10 = +10%). */
+export const GEM_BONUS_ENGINE_SPEED_PER_LEVEL = 10;
 
 export const GEM_BONUS_DEFS: GemBonusDef[] = [
   { id: 'iron_cache',        name: 'Iron Cache',        description: `+${GEM_BONUS_IRON_PER_LEVEL} Iron ore at loop start`,              gem: Material.Quartz,    gemCost: 3, maxLevel: 5 },
@@ -508,4 +514,6 @@ export const GEM_BONUS_DEFS: GemBonusDef[] = [
   { id: 'combat_training',   name: 'Combat Training',   description: `+${GEM_BONUS_WEAPON_PER_LEVEL}% weapon damage (permanent)`,       gem: Material.Iolite,    gemCost: 2, maxLevel: 4 },
   { id: 'mining_expertise',  name: 'Mining Expertise',  description: `+${GEM_BONUS_MINING_PER_LEVEL}% mining damage (permanent)`,       gem: Material.Amethyst,  gemCost: 2, maxLevel: 4 },
   { id: 'void_resonance',    name: 'Void Resonance',    description: `+${GEM_BONUS_XP_PER_LEVEL}% XP earned (permanent)`,              gem: Material.Voidstone, gemCost: 2, maxLevel: 3 },
+  { id: 'hull_regen',        name: 'Hull Regen',        description: `+${GEM_BONUS_HP_REGEN_PER_LEVEL} HP/s passive hull repair (permanent)`,    gem: Material.Sapphire,  gemCost: 3, maxLevel: 4 },
+  { id: 'engine_overdrive',  name: 'Engine Overdrive',  description: `+${GEM_BONUS_ENGINE_SPEED_PER_LEVEL}% top speed (permanent)`,               gem: Material.Diamond,   gemCost: 3, maxLevel: 3 },
 ];

@@ -184,6 +184,10 @@ export class Player {
   permanentMiningBonus = 0;
   /** Permanent XP multiplier (1 = normal, 1.4 = +40%). */
   permanentXpMultiplier = 1;
+  /** Passive hull HP regeneration per second (from Hull Regen gem upgrade). */
+  passiveHpRegenPerSec = 0;
+  /** Permanent engine top-speed bonus (additive fraction, e.g. 0.1 = +10%). */
+  permanentSpeedBonus = 0;
 
   constructor(
     private readonly input:    InputManager,
@@ -208,7 +212,7 @@ export class Player {
   }
 
   get topSpeedMultiplier(): number {
-    return 1 + this.moduleFamilyTierWeight.engine * 0.12;
+    return 1 + this.moduleFamilyTierWeight.engine * 0.12 + this.permanentSpeedBonus;
   }
 
   get overheatDrainMultiplier(): number {
@@ -730,6 +734,26 @@ export class Player {
     } else {
       const regenRate = this.hasShieldGen ? this.shieldRegen * 3 : this.shieldRegen;
       this.shield = Math.min(this.maxShield, this.shield + regenRate * dt);
+    }
+
+    // ── Passive hull HP regen (Hull Regen gem upgrade) ────────────
+    if (this.passiveHpRegenPerSec > 0 && this.hp < this.maxHp) {
+      const healed = this.passiveHpRegenPerSec * dt;
+      // Heal the innermost (nearest-core) damaged module
+      let remaining = healed;
+      for (const m of this.playerModules) {
+        if (!m.alive || !m.isConnected || m.isCore || m.hp >= m.maxHp) continue;
+        const gap = m.maxHp - m.hp;
+        if (remaining >= gap) {
+          m.hp = m.maxHp;
+          remaining -= gap;
+        } else {
+          m.hp += remaining;
+          remaining = 0;
+        }
+        if (remaining <= 0) break;
+      }
+      if (healed - remaining > 0) this._recalculateShipStats();
     }
 
     // ── Damage flash countdown ────────────────────────────────────

@@ -11,7 +11,7 @@ import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
 import { PostProcessRenderer } from './post-process';
 import { GraphicsConfig, GraphicsQuality, QUALITY_PRESETS } from './graphics-settings';
-import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS, GEM_BONUS_IRON_PER_LEVEL, GEM_BONUS_GOLD_PER_LEVEL, GEM_BONUS_CRYSTAL_PER_LEVEL, GEM_BONUS_HP_PER_LEVEL, GEM_BONUS_SHIELD_PER_LEVEL, GEM_BONUS_WEAPON_PER_LEVEL, GEM_BONUS_MINING_PER_LEVEL, GEM_BONUS_XP_PER_LEVEL } from './types';
+import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS, GEM_BONUS_IRON_PER_LEVEL, GEM_BONUS_GOLD_PER_LEVEL, GEM_BONUS_CRYSTAL_PER_LEVEL, GEM_BONUS_HP_PER_LEVEL, GEM_BONUS_SHIELD_PER_LEVEL, GEM_BONUS_WEAPON_PER_LEVEL, GEM_BONUS_MINING_PER_LEVEL, GEM_BONUS_XP_PER_LEVEL, GEM_BONUS_HP_REGEN_PER_LEVEL, GEM_BONUS_ENGINE_SPEED_PER_LEVEL } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -131,7 +131,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 40;
+const BUILD_NUMBER = 41;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -255,6 +255,16 @@ class Game {
   private _gemShopCloseRect: { x: number; y: number; w: number; h: number } | null = null;
   /** Gem Shop button rect on the death screen. */
   private _deathGemShopRect: { x: number; y: number; w: number; h: number } | null = null;
+
+  // ── Kill combo system ────────────────────────────────────────────────────────
+  /** Number of kills since the last combo reset. */
+  private _killComboCount = 0;
+  /** Seconds until the combo resets if no new kill occurs. */
+  private _killComboTimer = 0;
+  /** Kill count from last frame; used to detect new kills each update. */
+  private _killComboPrevKills = 0;
+  /** Maximum seconds between kills to continue a combo streak. */
+  private static readonly _COMBO_WINDOW_SEC = 4.0;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -627,6 +637,33 @@ class Game {
     // ── World / enemies / collisions ────────────────────────────────
     this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position, this._graphicsConfig);
     this._runAutoCrafting();
+
+    // ── Kill combo tracking ─────────────────────────────────────────
+    const newKills = this.world.kills - this._killComboPrevKills;
+    if (newKills > 0) {
+      this._killComboPrevKills = this.world.kills;
+      for (let k = 0; k < newKills; k++) {
+        this._killComboCount++;
+        this._killComboTimer = Game._COMBO_WINDOW_SEC;
+        if (this._killComboCount >= 2) {
+          const bonusXp = this._killComboCount * 5;
+          this.player.gainXP(bonusXp);
+          const comboLabel = `${this._killComboCount}× COMBO! +${bonusXp} XP`;
+          this.floatingTexts.push({
+            pos:      { x: this.player.pos.x, y: this.player.pos.y - 30 },
+            vel:      { x: 0, y: -28 },
+            text:     comboLabel,
+            color:    this._killComboCount >= 5 ? '#ff9900' : '#ffdd44',
+            lifetime: 1.6,
+            maxLife:  1.6,
+          });
+          if (this._killComboCount >= 5) this.camera.shake(2.5);
+        }
+      }
+    } else if (this._killComboTimer > 0) {
+      this._killComboTimer -= dt;
+      if (this._killComboTimer <= 0) this._killComboCount = 0;
+    }
 
     const stationBeamShotCount = this.world.consumeStationBeamShotsThisFrame();
     if (stationBeamShotCount > 0) {
@@ -1379,6 +1416,9 @@ class Game {
     this._timeSurvived = 0;
     this._maxDistFromOrigin = 0;
     this.gameTime = 0;
+    this._killComboCount = 0;
+    this._killComboTimer = 0;
+    this._killComboPrevKills = 0;
     this.camera.position = { x: this.player.pos.x, y: this.player.pos.y };
     this.hud.showMessage(`Loop ${this._loopCount}: gems carried over. Ship reconstruction in progress.`, 3);
   }
@@ -1404,6 +1444,8 @@ class Game {
     this.player.permanentWeaponDamageBonus   = level('combat_training') * GEM_BONUS_WEAPON_PER_LEVEL / 100;
     this.player.permanentMiningBonus         = level('mining_expertise') * GEM_BONUS_MINING_PER_LEVEL / 100;
     this.player.permanentXpMultiplier        = 1 + level('void_resonance') * GEM_BONUS_XP_PER_LEVEL / 100;
+    this.player.passiveHpRegenPerSec         = level('hull_regen') * GEM_BONUS_HP_REGEN_PER_LEVEL;
+    this.player.permanentSpeedBonus          = level('engine_overdrive') * GEM_BONUS_ENGINE_SPEED_PER_LEVEL / 100;
   }
 
   /** Add starting resource bonuses to inventory (called after inventory reset). */

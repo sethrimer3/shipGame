@@ -17,3 +17,11 @@
 
 - [ ] Die and verify the death overlay shows `[Rebirth (R)]` on desktop and `[Rebirth]` on mobile.
 - [ ] Trigger rebirth and verify a flash appears first, then the ship procedurally rebuilds outward from the core.
+
+- [ ] Kill two enemies rapidly and verify a "2× COMBO! +XP" floating text appears above the player.
+- [ ] Build a 5+ kill streak and confirm a camera shake fires alongside the orange combo text.
+- [ ] Confirm the combo counter resets after ~4 seconds of no kills.
+- [ ] Open the Gem Shop on death screen and verify "Hull Regen" and "Engine Overdrive" appear as new upgrades.
+- [ ] Buy a Hull Regen level and rebirth; confirm damaged hull slowly regenerates HP between fights.
+- [ ] Buy an Engine Overdrive level and rebirth; confirm ship reaches a higher top speed.
+- [ ] Travel to 2000+ world-unit distance and kill enemies; verify occasional gem pickups appear (small chance).

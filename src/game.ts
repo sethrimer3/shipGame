@@ -11,7 +11,7 @@ import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
 import { PostProcessRenderer } from './post-process';
 import { GraphicsConfig, GraphicsQuality, QUALITY_PRESETS } from './graphics-settings';
-import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS, GEM_BONUS_IRON_PER_LEVEL, GEM_BONUS_GOLD_PER_LEVEL, GEM_BONUS_CRYSTAL_PER_LEVEL, GEM_BONUS_HP_PER_LEVEL, GEM_BONUS_SHIELD_PER_LEVEL, GEM_BONUS_WEAPON_PER_LEVEL, GEM_BONUS_MINING_PER_LEVEL, GEM_BONUS_XP_PER_LEVEL, GEM_BONUS_HP_REGEN_PER_LEVEL, GEM_BONUS_ENGINE_SPEED_PER_LEVEL, GEM_BONUS_CRIT_CHANCE_PER_LEVEL, GEM_BONUS_FIRE_RATE_PER_LEVEL } from './types';
+import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, ResourceStack, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS, GEM_BONUS_IRON_PER_LEVEL, GEM_BONUS_GOLD_PER_LEVEL, GEM_BONUS_CRYSTAL_PER_LEVEL, GEM_BONUS_HP_PER_LEVEL, GEM_BONUS_SHIELD_PER_LEVEL, GEM_BONUS_WEAPON_PER_LEVEL, GEM_BONUS_MINING_PER_LEVEL, GEM_BONUS_XP_PER_LEVEL, GEM_BONUS_HP_REGEN_PER_LEVEL, GEM_BONUS_ENGINE_SPEED_PER_LEVEL, GEM_BONUS_CRIT_CHANCE_PER_LEVEL, GEM_BONUS_FIRE_RATE_PER_LEVEL } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 43;
+const BUILD_NUMBER = 44;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -177,6 +177,19 @@ const STARTING_MODULE_RESOURCE_COUNTS: Record<ShipModuleType, number> = {
   spread_cannon: 0,
   missile_launcher: 0,
   cluster_bomb: 0,
+};
+
+/**
+ * Material costs to fully rebuild starter module types (those without a crafting recipe).
+ * Used by the repair-materials HUD display.
+ */
+const MODULE_REBUILD_COSTS: Partial<Record<ShipModuleType, ResourceStack[]>> = {
+  hull:        [{ material: Material.Iron, quantity: 2 }],
+  engine:      [{ material: Material.Iron, quantity: 3 }],
+  shield:      [{ material: Material.Iron, quantity: 2 }, { material: Material.Crystal, quantity: 1 }],
+  coolant:     [{ material: Material.Iron, quantity: 2 }],
+  weapon:      [{ material: Material.Iron, quantity: 3 }],
+  miningLaser: [{ material: Material.Iron, quantity: 2 }, { material: Material.Crystal, quantity: 1 }],
 };
 
 class Game {
@@ -258,6 +271,8 @@ class Game {
   private _gemShopCloseRect: { x: number; y: number; w: number; h: number } | null = null;
   /** Gem Shop button rect on the death screen. */
   private _deathGemShopRect: { x: number; y: number; w: number; h: number } | null = null;
+  /** Rebirth button rect on the death screen. */
+  private _deathRebirthRect: { x: number; y: number; w: number; h: number } | null = null;
 
   // ── Kill combo system ────────────────────────────────────────────────────────
   /** Number of kills since the last combo reset. */
@@ -515,6 +530,12 @@ class Game {
       // Death screen: open gem shop button
       if (clicked && this._deathGemShopRect && inRect(this._deathGemShopRect)) {
         this._gemShopOpen = true;
+        return;
+      }
+
+      // Death screen: rebirth button click
+      if (clicked && this._deathRebirthRect && inRect(this._deathRebirthRect)) {
+        this._resetRunAfterDeath();
         return;
       }
 
@@ -1805,6 +1826,9 @@ class Game {
 
       // ── Off-screen enemy indicators ──────────────────────────────
       this._drawEnemyIndicators(ctx, minimapData.enemies);
+
+      // ── Repair materials list (below minimap) ─────────────────────
+      this._drawRepairMaterials(ctx);
     }
 
     // ── Danger proximity indicator (red edge glow when an enemy is very close) ──
@@ -2005,6 +2029,7 @@ class Game {
         ctx.strokeRect(rebirthBtnX, BTN_Y, rebirthBtnW, BTN_H);
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.fillText(rebirthLabel, rebirthBtnX + rebirthBtnW / 2, BTN_Y + 18);
+        this._deathRebirthRect = { x: rebirthBtnX, y: BTN_Y, w: rebirthBtnW, h: BTN_H };
       }
     }
 
@@ -2126,6 +2151,33 @@ class Game {
     ctx.font      = '8px Courier New';
     ctx.textAlign = 'center';
     ctx.fillText('N', cx, my + 9);
+  }
+
+  // ── Repair materials list (top-right, below minimap) ───────────────────────
+  private _drawRepairMaterials(ctx: CanvasRenderingContext2D): void {
+    const needed = this.player.getRepairMaterialsNeeded(MODULE_REBUILD_COSTS, CRAFTING_RECIPES);
+    if (needed.size === 0) return;
+
+    const minimapSizePx   = 150;
+    const minimapMarginPx = 14;
+    const my = minimapMarginPx + minimapSizePx + 6; // just below the minimap
+
+    ctx.save();
+    ctx.font      = '10px Courier New';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 180, 100, 0.85)';
+
+    let row = 0;
+    const lineHeightPx = 13;
+    ctx.fillText('⚠ Repairs needed:', this.canvas.width - minimapMarginPx, my + row * lineHeightPx);
+    row++;
+
+    ctx.fillStyle = 'rgba(255, 220, 160, 0.80)';
+    for (const [mat, qty] of needed) {
+      ctx.fillText(`${qty}× ${mat}`, this.canvas.width - minimapMarginPx, my + row * lineHeightPx);
+      row++;
+    }
+    ctx.restore();
   }
 
   // ── Off-screen enemy indicators ────────────────────────────────────────────

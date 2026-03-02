@@ -174,6 +174,17 @@ export class Player {
     SHIP_MODULE_TYPES.map((type) => [type, 1]),
   ) as Record<ShipModuleType, number>;
 
+  /** Permanent HP bonus from gem shop upgrades (added to core max HP). */
+  permanentHpBonus = 0;
+  /** Permanent shield bonus from gem shop upgrades. */
+  permanentShieldBonus = 0;
+  /** Permanent weapon damage bonus (additive fraction, e.g. 0.12 = +12%). */
+  permanentWeaponDamageBonus = 0;
+  /** Permanent mining damage bonus (additive multiplier fraction). */
+  permanentMiningBonus = 0;
+  /** Permanent XP multiplier (1 = normal, 1.4 = +40%). */
+  permanentXpMultiplier = 1;
+
   constructor(
     private readonly input:    InputManager,
     private readonly camera:   Camera,
@@ -208,9 +219,9 @@ export class Player {
     return 1 + this.moduleFamilyTierWeight.coolant * 0.3;
   }
 
-  /** Weapon damage multiplier from weapon modules (+8% per module, scaled by tier). */
+  /** Weapon damage multiplier from weapon modules (+8% per module, scaled by tier) plus permanent bonus. */
   get weaponDamageMultiplier(): number {
-    return 1 + this.moduleFamilyTierWeight.weapon * 0.08;
+    return 1 + this.moduleFamilyTierWeight.weapon * 0.08 + this.permanentWeaponDamageBonus;
   }
 
   /** Weapon fire rate multiplier from weapon modules (+6% per module, scaled by tier). */
@@ -218,9 +229,9 @@ export class Player {
     return 1 + this.moduleFamilyTierWeight.weapon * 0.06;
   }
 
-  /** Mining laser damage multiplier from mining-laser family tier weight. */
+  /** Mining laser damage multiplier from mining-laser family tier weight, plus permanent bonus. */
   get miningLaserDamageMultiplier(): number {
-    return Math.max(1, this.moduleFamilyTierWeight.miningLaser);
+    return Math.max(1, this.moduleFamilyTierWeight.miningLaser) * (1 + this.permanentMiningBonus);
   }
 
   getMuzzleWorldPos(): Vec2 {
@@ -277,7 +288,7 @@ export class Player {
 
   /** Award XP; triggers level-up logic and sets `leveledUp` flag. */
   gainXP(amount: number): void {
-    this.xp += amount;
+    this.xp += Math.round(amount * this.permanentXpMultiplier);
     while (this.xp >= this.xpToNextLevel()) {
       const threshold = this.xpToNextLevel(); // capture before level increment
       this.xp -= threshold;
@@ -500,7 +511,7 @@ export class Player {
       }
     }
 
-    this.maxShield = 10 + this.moduleFamilyTierWeight.shield * 20 + this.levelShieldBonus;
+    this.maxShield = 10 + this.moduleFamilyTierWeight.shield * 20 + this.levelShieldBonus + this.permanentShieldBonus;
     this.shieldRegen = 2 + this.moduleFamilyTierWeight.shield * 1.8;
 
     if (this.hasHeavyArmor) this.maxShield += 25;
@@ -513,7 +524,9 @@ export class Player {
       const isCore = slot.type === 'hull' && slot.col === 0 && slot.row === 0;
       const tierMult = isCore ? 1 : this._tierMult(slot.type);
       const family = SHIP_MODULE_FAMILY_BY_TYPE[slot.type];
-      const maxHp = isCore ? CORE_HP_BASE : Math.round(MODULE_HP_BY_FAMILY[family] * tierMult);
+      const maxHp = isCore
+        ? CORE_HP_BASE + this.permanentHpBonus
+        : Math.round(MODULE_HP_BY_FAMILY[family] * tierMult);
       return {
         type: slot.type,
         col: slot.col,

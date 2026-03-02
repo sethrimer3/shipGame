@@ -464,3 +464,48 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
     projectileColor: '#ff8800', projectileRadius: 5, isHoming: true,
   },
 };
+
+// ── Gem bonus (incremental loop) system ───────────────────────────────────────
+
+export type GemBonusId =
+  | 'iron_cache'
+  | 'gold_reserve'
+  | 'crystal_stockpile'
+  | 'reinforced_hull'
+  | 'power_shields'
+  | 'combat_training'
+  | 'mining_expertise'
+  | 'void_resonance';
+
+export interface GemBonusDef {
+  id:          GemBonusId;
+  name:        string;
+  description: string;
+  gem:         Material;
+  gemCost:     number;
+  maxLevel:    number;
+}
+
+/** Bonus magnitude per level for each gem bonus effect. */
+export const GEM_BONUS_IRON_PER_LEVEL    = 15;
+export const GEM_BONUS_GOLD_PER_LEVEL    = 8;
+export const GEM_BONUS_CRYSTAL_PER_LEVEL = 4;
+export const GEM_BONUS_HP_PER_LEVEL      = 20;
+export const GEM_BONUS_SHIELD_PER_LEVEL  = 15;
+/** Additive weapon damage bonus per level in percent (e.g. 12 = +12%). */
+export const GEM_BONUS_WEAPON_PER_LEVEL  = 12;
+/** Additive mining damage multiplier in percent per level. */
+export const GEM_BONUS_MINING_PER_LEVEL  = 20;
+/** Additive XP multiplier in percent per level (e.g. 40 = +40%). */
+export const GEM_BONUS_XP_PER_LEVEL      = 40;
+
+export const GEM_BONUS_DEFS: GemBonusDef[] = [
+  { id: 'iron_cache',        name: 'Iron Cache',        description: `+${GEM_BONUS_IRON_PER_LEVEL} Iron ore at loop start`,              gem: Material.Quartz,    gemCost: 3, maxLevel: 5 },
+  { id: 'gold_reserve',      name: 'Gold Reserve',      description: `+${GEM_BONUS_GOLD_PER_LEVEL} Gold ore at loop start`,              gem: Material.Ruby,      gemCost: 2, maxLevel: 4 },
+  { id: 'crystal_stockpile', name: 'Crystal Stockpile', description: `+${GEM_BONUS_CRYSTAL_PER_LEVEL} Crystal ore at loop start`,        gem: Material.Sunstone,  gemCost: 2, maxLevel: 3 },
+  { id: 'reinforced_hull',   name: 'Reinforced Hull',   description: `+${GEM_BONUS_HP_PER_LEVEL} max core HP (permanent)`,              gem: Material.Citrine,   gemCost: 2, maxLevel: 5 },
+  { id: 'power_shields',     name: 'Power Shields',     description: `+${GEM_BONUS_SHIELD_PER_LEVEL} max shield (permanent)`,           gem: Material.Emerald,   gemCost: 2, maxLevel: 5 },
+  { id: 'combat_training',   name: 'Combat Training',   description: `+${GEM_BONUS_WEAPON_PER_LEVEL}% weapon damage (permanent)`,       gem: Material.Iolite,    gemCost: 2, maxLevel: 4 },
+  { id: 'mining_expertise',  name: 'Mining Expertise',  description: `+${GEM_BONUS_MINING_PER_LEVEL}% mining damage (permanent)`,       gem: Material.Amethyst,  gemCost: 2, maxLevel: 4 },
+  { id: 'void_resonance',    name: 'Void Resonance',    description: `+${GEM_BONUS_XP_PER_LEVEL}% XP earned (permanent)`,              gem: Material.Voidstone, gemCost: 2, maxLevel: 3 },
+];

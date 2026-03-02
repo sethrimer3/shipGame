@@ -464,3 +464,35 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
     projectileColor: '#ff8800', projectileRadius: 5, isHoming: true,
   },
 };
+
+// ── Gem bonus (incremental loop) system ───────────────────────────────────────
+
+export type GemBonusId =
+  | 'iron_cache'
+  | 'gold_reserve'
+  | 'crystal_stockpile'
+  | 'reinforced_hull'
+  | 'power_shields'
+  | 'combat_training'
+  | 'mining_expertise'
+  | 'void_resonance';
+
+export interface GemBonusDef {
+  id:          GemBonusId;
+  name:        string;
+  description: string;
+  gem:         Material;
+  gemCost:     number;
+  maxLevel:    number;
+}
+
+export const GEM_BONUS_DEFS: GemBonusDef[] = [
+  { id: 'iron_cache',        name: 'Iron Cache',        description: '+15 Iron ore at loop start',      gem: Material.Quartz,    gemCost: 3, maxLevel: 5 },
+  { id: 'gold_reserve',      name: 'Gold Reserve',      description: '+8 Gold ore at loop start',       gem: Material.Ruby,      gemCost: 2, maxLevel: 4 },
+  { id: 'crystal_stockpile', name: 'Crystal Stockpile', description: '+4 Crystal ore at loop start',    gem: Material.Sunstone,  gemCost: 2, maxLevel: 3 },
+  { id: 'reinforced_hull',   name: 'Reinforced Hull',   description: '+20 max core HP (permanent)',     gem: Material.Citrine,   gemCost: 2, maxLevel: 5 },
+  { id: 'power_shields',     name: 'Power Shields',     description: '+15 max shield (permanent)',      gem: Material.Emerald,   gemCost: 2, maxLevel: 5 },
+  { id: 'combat_training',   name: 'Combat Training',   description: '+12% weapon damage (permanent)',  gem: Material.Iolite,    gemCost: 2, maxLevel: 4 },
+  { id: 'mining_expertise',  name: 'Mining Expertise',  description: '+20% mining damage (permanent)',  gem: Material.Amethyst,  gemCost: 2, maxLevel: 4 },
+  { id: 'void_resonance',    name: 'Void Resonance',    description: '+40% XP earned (permanent)',      gem: Material.Voidstone, gemCost: 2, maxLevel: 3 },
+];

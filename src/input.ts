@@ -20,6 +20,7 @@ export class InputManager {
   private _scrollDelta = 0;
   private _mouseDown = false;
   private _mouseRightDown = false;
+  private _mouseJustDown = false;
 
   /** True when a touch device is detected. */
   readonly isMobile: boolean;
@@ -60,7 +61,7 @@ export class InputManager {
     });
 
     canvas.addEventListener('mousedown', e => {
-      if (e.button === 0) this._mouseDown = true;
+      if (e.button === 0) { this._mouseDown = true; this._mouseJustDown = true; }
       if (e.button === 2) { this._mouseRightDown = true; e.preventDefault(); }
     });
     canvas.addEventListener('mouseup', e => {
@@ -256,5 +257,12 @@ export class InputManager {
     const d = this._scrollDelta;
     this._scrollDelta = 0;
     return d;
+  }
+
+  /** Returns true once per left-click (consumes the event). */
+  consumeClick(): boolean {
+    const v = this._mouseJustDown;
+    this._mouseJustDown = false;
+    return v;
   }
 }

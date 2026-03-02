@@ -11,7 +11,7 @@ import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
 import { PostProcessRenderer } from './post-process';
 import { GraphicsConfig, GraphicsQuality, QUALITY_PRESETS } from './graphics-settings';
-import { len, Material, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS } from './types';
+import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -131,7 +131,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 38;
+const BUILD_NUMBER = 39;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -241,6 +241,20 @@ class Game {
   private _rebirthTimerSec = 0;
   private _isRebirthAnimating = false;
   private _rebirthModuleResources: Record<ShipModuleType, number> = { ...STARTING_MODULE_RESOURCE_COUNTS };
+
+  // ── Incremental loop / gem shop ─────────────────────────────────────────────
+  /** Number of completed loops (increments on each rebirth). */
+  private _loopCount = 0;
+  /** Purchased gem bonus levels (0 = not bought). */
+  private _gemBonusLevels: Partial<Record<GemBonusId, number>> = {};
+  /** Whether the gem shop overlay is visible on the death screen. */
+  private _gemShopOpen = false;
+  /** Buy button rects rebuilt each render frame; used for hit-testing in update. */
+  private _gemShopBuyRects: Array<{ id: GemBonusId; x: number; y: number; w: number; h: number }> = [];
+  /** Close button rect for the gem shop overlay. */
+  private _gemShopCloseRect: { x: number; y: number; w: number; h: number } | null = null;
+  /** Gem Shop button rect on the death screen. */
+  private _deathGemShopRect: { x: number; y: number; w: number; h: number } | null = null;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -435,6 +449,34 @@ class Game {
 
     if (!this.player.alive) {
       this.camera.updateShake(dt); // let shake decay on the death screen
+
+      // Gem shop / death-screen click handling
+      const clicked = this.input.consumeClick();
+      const mx = this.input.mousePos.x;
+      const my = this.input.mousePos.y;
+      const inRect = (r: { x: number; y: number; w: number; h: number }): boolean =>
+        mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
+
+      if (this._gemShopOpen) {
+        if (clicked) {
+          if (this._gemShopCloseRect && inRect(this._gemShopCloseRect)) {
+            this._gemShopOpen = false;
+          } else {
+            for (const btn of this._gemShopBuyRects) {
+              if (inRect(btn)) { this._tryBuyGemBonus(btn.id); break; }
+            }
+          }
+        }
+        if (this.input.isDown('r')) this._resetRunAfterDeath();
+        return;
+      }
+
+      // Death screen: open gem shop button
+      if (clicked && this._deathGemShopRect && inRect(this._deathGemShopRect)) {
+        this._gemShopOpen = true;
+        return;
+      }
+
       if (this.input.isDown('r')) this._resetRunAfterDeath();
       return;
     }
@@ -1293,10 +1335,16 @@ class Game {
   }
 
   private _resetRunAfterDeath(): void {
+    this._loopCount++;
+    this._gemShopOpen = false;
+
     const gemCarry = new Map<Material, number>();
     for (const gem of GEM_MATERIALS) {
       gemCarry.set(gem, this.player.getResource(gem));
     }
+
+    // Apply permanent stat bonuses BEFORE rebuilding modules so core HP is correct
+    this._applyGemBonuses();
 
     this.player.setModuleLayout(CORE_ONLY_LAYOUT);
     this.player.initStarterPalette();
@@ -1306,6 +1354,9 @@ class Game {
     for (const [mat, item] of this.player.inventory.entries()) {
       item.quantity = gemCarry.get(mat) ?? 0;
     }
+
+    // Add starting resource bonuses after inventory is restored to gems-only
+    this._addStartingResourceBonuses();
 
     this.toolbar.reset();
     const miningLaser = TOOLBAR_ITEM_DEFS['mining_laser'];
@@ -1329,7 +1380,7 @@ class Game {
     this._maxDistFromOrigin = 0;
     this.gameTime = 0;
     this.camera.position = { x: this.player.pos.x, y: this.player.pos.y };
-    this.hud.showMessage('Rebirth: only gems carried over. Ship reconstruction in progress.', 3);
+    this.hud.showMessage(`Loop ${this._loopCount}: gems carried over. Ship reconstruction in progress.`, 3);
   }
 
   private _updateRebirthAnimation(dt: number): void {
@@ -1341,6 +1392,209 @@ class Game {
       this._isRebirthAnimating = false;
       this._rebirthTimerSec = 0;
     }
+  }
+
+  /** Apply all purchased gem bonuses to the player (permanent stats + starting resources). */
+  private _applyGemBonuses(): void {
+    const level = (id: GemBonusId): number => this._gemBonusLevels[id] ?? 0;
+
+    // Permanent stat bonuses
+    this.player.permanentHpBonus             = level('reinforced_hull') * 20;
+    this.player.permanentShieldBonus         = level('power_shields') * 15;
+    this.player.permanentWeaponDamageBonus   = level('combat_training') * 0.12;
+    this.player.permanentMiningBonus         = level('mining_expertise') * 0.20;
+    this.player.permanentXpMultiplier        = 1 + level('void_resonance') * 0.4;
+  }
+
+  /** Add starting resource bonuses to inventory (called after inventory reset). */
+  private _addStartingResourceBonuses(): void {
+    const level = (id: GemBonusId): number => this._gemBonusLevels[id] ?? 0;
+    this.player.addResource(Material.Iron,    level('iron_cache')        * 15);
+    this.player.addResource(Material.Gold,    level('gold_reserve')      * 8);
+    this.player.addResource(Material.Crystal, level('crystal_stockpile') * 4);
+  }
+
+  /** Attempt to buy one level of a gem bonus. Returns true on success. */
+  private _tryBuyGemBonus(id: GemBonusId): boolean {
+    const def = GEM_BONUS_DEFS.find(d => d.id === id);
+    if (!def) return false;
+    const currentLevel = this._gemBonusLevels[id] ?? 0;
+    if (currentLevel >= def.maxLevel) {
+      this.hud.showMessage(`${def.name} is already at maximum level.`, 2);
+      return false;
+    }
+    if (this.player.getResource(def.gem) < def.gemCost) {
+      this.hud.showMessage(`Not enough ${def.gem}. Need ${def.gemCost}×.`, 2);
+      return false;
+    }
+    this.player.addResource(def.gem, -def.gemCost);
+    this._gemBonusLevels[id] = currentLevel + 1;
+    this.hud.showMessage(`${def.name} upgraded to level ${currentLevel + 1}!`, 2);
+    return true;
+  }
+
+  /** Render the gem shop overlay (shown on death screen). */
+  private _renderGemShop(ctx: CanvasRenderingContext2D): void {
+    const { canvas } = this;
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Darken background
+    ctx.fillStyle = 'rgba(0,0,0,0.88)';
+    ctx.fillRect(0, 0, W, H);
+
+    const ROW_H    = 52;
+    const HEADER_H = 80;
+    const GEM_ROW_H = 40;
+    const FOOTER_H  = 42;
+    const panelW = Math.min(640, W - 32);
+    const panelH = Math.min(H - 32, HEADER_H + GEM_ROW_H + GEM_BONUS_DEFS.length * ROW_H + FOOTER_H);
+    const px = Math.round((W - panelW) / 2);
+    const py = Math.round((H - panelH) / 2);
+
+    // Panel background
+    ctx.fillStyle   = '#070c1a';
+    ctx.strokeStyle = 'rgba(100,160,255,0.5)';
+    ctx.lineWidth   = 1.5;
+    ctx.fillRect(px, py, panelW, panelH);
+    ctx.strokeRect(px, py, panelW, panelH);
+
+    // Title
+    ctx.save();
+    ctx.font      = 'bold 20px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#7ecfff';
+    ctx.fillText('💎 GEM SHOP', W / 2, py + 28);
+    ctx.font      = '11px Courier New';
+    ctx.fillStyle = 'rgba(180,210,255,0.5)';
+    ctx.fillText('Spend gems on permanent bonuses that persist across every loop', W / 2, py + 48);
+    ctx.restore();
+
+    // Close button (top-right)
+    const CLOSE_W = 76; const CLOSE_H = 22;
+    const closeX = px + panelW - CLOSE_W - 8;
+    const closeY = py + 6;
+    ctx.fillStyle   = 'rgba(50,70,110,0.6)';
+    ctx.strokeStyle = 'rgba(100,150,255,0.5)';
+    ctx.lineWidth   = 1;
+    ctx.fillRect(closeX, closeY, CLOSE_W, CLOSE_H);
+    ctx.strokeRect(closeX, closeY, CLOSE_W, CLOSE_H);
+    ctx.font      = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#99bbdd';
+    ctx.fillText('✕ BACK', closeX + CLOSE_W / 2, closeY + 14);
+    this._gemShopCloseRect = { x: closeX, y: closeY, w: CLOSE_W, h: CLOSE_H };
+
+    // Gem inventory row
+    const gemRowY = py + HEADER_H;
+    ctx.font      = '11px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(180,210,255,0.5)';
+    ctx.fillText('Gems:', px + 10, gemRowY + 13);
+    let gemCurX = px + 60;
+    for (const gem of GEM_MATERIALS) {
+      const qty = this.player.getResource(gem);
+      if (qty <= 0) continue;
+      const color = MATERIAL_PROPS[gem].color;
+      const label = `${qty}× ${gem}`;
+      ctx.fillStyle = color;
+      ctx.fillText(label, gemCurX, gemRowY + 13);
+      gemCurX += ctx.measureText(label).width + 12;
+      if (gemCurX > px + panelW - 10) break;
+    }
+
+    // Separator
+    ctx.strokeStyle = 'rgba(100,150,255,0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px + 6, gemRowY + GEM_ROW_H - 4);
+    ctx.lineTo(px + panelW - 6, gemRowY + GEM_ROW_H - 4);
+    ctx.stroke();
+
+    // Bonus rows
+    const listY = py + HEADER_H + GEM_ROW_H;
+    this._gemShopBuyRects.length = 0;
+
+    for (let i = 0; i < GEM_BONUS_DEFS.length; i++) {
+      const def      = GEM_BONUS_DEFS[i];
+      const curLevel = this._gemBonusLevels[def.id] ?? 0;
+      const isMax    = curLevel >= def.maxLevel;
+      const canAfford = this.player.getResource(def.gem) >= def.gemCost;
+      const rowY     = listY + i * ROW_H;
+
+      // Alternating row tint
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(15,30,60,0.35)';
+        ctx.fillRect(px + 4, rowY + 2, panelW - 8, ROW_H - 4);
+      }
+
+      // Name
+      ctx.font      = 'bold 12px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = isMax ? '#88aabb' : '#d0eaff';
+      ctx.fillText(def.name, px + 12, rowY + 17);
+
+      // Description
+      ctx.font      = '10px Courier New';
+      ctx.fillStyle = 'rgba(180,210,255,0.6)';
+      ctx.fillText(def.description, px + 12, rowY + 34);
+
+      // Level pip bar
+      const barX = px + Math.round(panelW * 0.5);
+      let pips = '';
+      for (let j = 0; j < def.maxLevel; j++) pips += j < curLevel ? '●' : '○';
+      ctx.font      = '11px Courier New';
+      ctx.fillStyle = isMax ? '#88cc88' : 'rgba(180,210,255,0.55)';
+      ctx.textAlign = 'left';
+      ctx.fillText(pips, barX, rowY + 17);
+      ctx.fillStyle = isMax ? '#66cc66' : 'rgba(160,190,255,0.55)';
+      ctx.fillText(`Lv ${curLevel}/${def.maxLevel}`, barX, rowY + 34);
+
+      // BUY button
+      const BTN_W = 108; const BTN_H = 34;
+      const btnX = px + panelW - BTN_W - 8;
+      const btnY = rowY + Math.round((ROW_H - BTN_H) / 2);
+
+      if (isMax) {
+        ctx.fillStyle   = 'rgba(20,60,20,0.5)';
+        ctx.strokeStyle = 'rgba(60,160,60,0.4)';
+      } else if (canAfford) {
+        ctx.fillStyle   = 'rgba(15,50,110,0.7)';
+        ctx.strokeStyle = 'rgba(80,150,255,0.75)';
+      } else {
+        ctx.fillStyle   = 'rgba(30,30,30,0.4)';
+        ctx.strokeStyle = 'rgba(80,80,80,0.3)';
+      }
+      ctx.lineWidth = 1;
+      ctx.fillRect(btnX, btnY, BTN_W, BTN_H);
+      ctx.strokeRect(btnX, btnY, BTN_W, BTN_H);
+
+      ctx.textAlign = 'center';
+      if (isMax) {
+        ctx.font      = 'bold 12px Courier New';
+        ctx.fillStyle = '#66cc66';
+        ctx.fillText('✓ MAX', btnX + BTN_W / 2, btnY + 21);
+      } else {
+        const gemColor = MATERIAL_PROPS[def.gem].color;
+        ctx.font      = '10px Courier New';
+        ctx.fillStyle = canAfford ? gemColor : '#556677';
+        ctx.fillText(`${def.gemCost}× ${def.gem}`, btnX + BTN_W / 2, btnY + 13);
+        ctx.font      = 'bold 11px Courier New';
+        ctx.fillStyle = canAfford ? '#d0eaff' : '#445566';
+        ctx.fillText('BUY →', btnX + BTN_W / 2, btnY + 27);
+        this._gemShopBuyRects.push({ id: def.id, x: btnX, y: btnY, w: BTN_W, h: BTN_H });
+      }
+    }
+
+    // Footer
+    const footerY = py + panelH - FOOTER_H + 8;
+    ctx.font      = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(200,220,255,0.35)';
+    ctx.fillText('Bonuses apply starting next loop and are permanent.', W / 2, footerY);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    const rLabel = this.input.isMobile ? '[Rebirth]' : '[R] Rebirth now';
+    ctx.fillText(rLabel, W / 2, footerY + 18);
   }
 
   private _pauseKeyHeld    = false;
@@ -1455,12 +1709,16 @@ class Game {
       ctx.restore();
     }
 
-    // ── Build number (bottom-left) ─────────────────────────────────
+    // ── Build number + loop counter (bottom-left) ─────────────────
     ctx.save();
     ctx.font      = '10px Courier New';
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.fillText(`Build ${BUILD_NUMBER}`, 8, canvas.height - 8);
+    if (this._loopCount > 0) {
+      ctx.fillStyle = 'rgba(180,200,255,0.35)';
+      ctx.fillText(`Loop ${this._loopCount}`, 8, canvas.height - 22);
+    }
     ctx.restore();
 
     // ── Pause overlay ──────────────────────────────────────────────
@@ -1512,41 +1770,77 @@ class Game {
 
     // ── Game-over overlay ──────────────────────────────────────────
     if (!this.player.alive) {
-      ctx.fillStyle = 'rgba(0,0,0,0.70)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (this._gemShopOpen) {
+        this._renderGemShop(ctx);
+      } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.70)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
 
-      ctx.fillStyle   = '#e74c3c';
-      ctx.font        = 'bold 48px Courier New';
-      ctx.textAlign   = 'center';
-      ctx.fillText('SHIP DESTROYED', cx, cy - 60);
+        ctx.fillStyle   = '#e74c3c';
+        ctx.font        = 'bold 48px Courier New';
+        ctx.textAlign   = 'center';
+        ctx.fillText('SHIP DESTROYED', cx, cy - 75);
 
-      ctx.fillStyle = '#fff';
-      ctx.font      = '18px Courier New';
-      const mins = Math.floor(this._timeSurvived / 60);
-      const secs = Math.floor(this._timeSurvived % 60);
-      const timeStr = `${mins}:${String(secs).padStart(2, '0')}`;
-      ctx.fillText(`Kills: ${this.world.kills}   Level: ${this.player.level}`, cx, cy - 10);
-      ctx.fillText(`Time: ${timeStr}   Max Dist: ${Math.round(this._maxDistFromOrigin)}`, cx, cy + 22);
+        // Loop counter
+        if (this._loopCount > 0) {
+          ctx.font      = '15px Courier New';
+          ctx.fillStyle = '#7ecfff';
+          ctx.fillText(`Loop ${this._loopCount}`, cx, cy - 44);
+        }
 
-      const rebirthLabel = this.input.isMobile ? '[Rebirth]' : '[Rebirth (R)]';
-      ctx.font = '14px Courier New';
-      const labelWidth = ctx.measureText(rebirthLabel).width;
-      const buttonWidth = labelWidth + 24;
-      const buttonHeight = 26;
-      const buttonX = cx - buttonWidth / 2;
-      const buttonY = cy + 48;
+        ctx.fillStyle = '#fff';
+        ctx.font      = '18px Courier New';
+        const mins = Math.floor(this._timeSurvived / 60);
+        const secs = Math.floor(this._timeSurvived % 60);
+        const timeStr = `${mins}:${String(secs).padStart(2, '0')}`;
+        ctx.fillText(`Kills: ${this.world.kills}   Level: ${this.player.level}`, cx, cy - 10);
+        ctx.fillText(`Time: ${timeStr}   Max Dist: ${Math.round(this._maxDistFromOrigin)}`, cx, cy + 22);
 
-      ctx.fillStyle = 'rgba(70,160,255,0.20)';
-      ctx.strokeStyle = 'rgba(170,220,255,0.7)';
-      ctx.lineWidth = 1.5;
-      ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
-      ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+        // Gem totals row
+        const heldGems = GEM_MATERIALS.filter(g => this.player.getResource(g) > 0);
+        if (heldGems.length > 0) {
+          ctx.font = '12px Courier New';
+          let gemStr = 'Gems: ';
+          for (const g of heldGems) gemStr += `${this.player.getResource(g)}× ${g}  `;
+          ctx.fillStyle = 'rgba(200,230,255,0.7)';
+          ctx.fillText(gemStr.trim(), cx, cy + 50);
+        }
 
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.fillText(rebirthLabel, cx, buttonY + 17);
+        // Buttons row
+        const BTN_H = 28;
+        const BTN_Y = cy + (heldGems.length > 0 ? 74 : 58);
+
+        // Gem Shop button
+        ctx.font = '13px Courier New';
+        const shopLabel = '💎 Gem Shop';
+        const shopLabelW = ctx.measureText(shopLabel).width;
+        const shopBtnW = shopLabelW + 28;
+        const shopBtnX = cx - shopBtnW - 8;
+        ctx.fillStyle   = 'rgba(50,40,100,0.70)';
+        ctx.strokeStyle = 'rgba(160,120,255,0.8)';
+        ctx.lineWidth   = 1.5;
+        ctx.fillRect(shopBtnX, BTN_Y, shopBtnW, BTN_H);
+        ctx.strokeRect(shopBtnX, BTN_Y, shopBtnW, BTN_H);
+        ctx.fillStyle = 'rgba(210,180,255,0.9)';
+        ctx.fillText(shopLabel, shopBtnX + shopBtnW / 2, BTN_Y + 18);
+        this._deathGemShopRect = { x: shopBtnX, y: BTN_Y, w: shopBtnW, h: BTN_H };
+
+        // Rebirth button
+        const rebirthLabel = this.input.isMobile ? '[Rebirth]' : '[Rebirth (R)]';
+        const rebirthLabelW = ctx.measureText(rebirthLabel).width;
+        const rebirthBtnW = rebirthLabelW + 28;
+        const rebirthBtnX = cx + 8;
+        ctx.fillStyle   = 'rgba(70,160,255,0.20)';
+        ctx.strokeStyle = 'rgba(170,220,255,0.7)';
+        ctx.lineWidth   = 1.5;
+        ctx.fillRect(rebirthBtnX, BTN_Y, rebirthBtnW, BTN_H);
+        ctx.strokeRect(rebirthBtnX, BTN_Y, rebirthBtnW, BTN_H);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillText(rebirthLabel, rebirthBtnX + rebirthBtnW / 2, BTN_Y + 18);
+      }
     }
 
     if (this._isRebirthAnimating) {

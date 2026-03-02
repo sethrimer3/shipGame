@@ -642,23 +642,22 @@ class Game {
     const newKills = this.world.kills - this._killComboPrevKills;
     if (newKills > 0) {
       this._killComboPrevKills = this.world.kills;
-      for (let k = 0; k < newKills; k++) {
-        this._killComboCount++;
-        this._killComboTimer = Game._COMBO_WINDOW_SEC;
-        if (this._killComboCount >= 2) {
-          const bonusXp = this._killComboCount * 5;
-          this.player.gainXP(bonusXp);
-          const comboLabel = `${this._killComboCount}× COMBO! +${bonusXp} XP`;
-          this.floatingTexts.push({
-            pos:      { x: this.player.pos.x, y: this.player.pos.y - 30 },
-            vel:      { x: 0, y: -28 },
-            text:     comboLabel,
-            color:    this._killComboCount >= 5 ? '#ff9900' : '#ffdd44',
-            lifetime: 1.6,
-            maxLife:  1.6,
-          });
-          if (this._killComboCount >= 5) this.camera.shake(2.5);
-        }
+      this._killComboCount += newKills;
+      this._killComboTimer = Game._COMBO_WINDOW_SEC;
+      // Award bonus XP and show combo text once per frame (avoids per-kill allocations)
+      if (this._killComboCount >= 2) {
+        const bonusXp = this._killComboCount * 5;
+        this.player.gainXP(bonusXp);
+        const comboLabel = `${this._killComboCount}× COMBO! +${bonusXp} XP`;
+        this.floatingTexts.push({
+          pos:      { x: this.player.pos.x, y: this.player.pos.y - 30 },
+          vel:      { x: 0, y: -28 },
+          text:     comboLabel,
+          color:    this._killComboCount >= 5 ? '#ff9900' : '#ffdd44',
+          lifetime: 1.6,
+          maxLife:  1.6,
+        });
+        if (this._killComboCount >= 5) this.camera.shake(2.5);
       }
     } else if (this._killComboTimer > 0) {
       this._killComboTimer -= dt;

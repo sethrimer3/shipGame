@@ -720,8 +720,8 @@ export class World {
               }
               // ── Gem drop (deep-zone enemies) ───────────────────────
               const dropDist = len(enemy.pos);
-              const GEM_DROP_CHANCE = dropDist >= 10000 ? 0.12 : dropDist >= 5000 ? 0.06 : dropDist >= 2000 ? 0.03 : 0;
-              if (GEM_DROP_CHANCE > 0 && Math.random() < GEM_DROP_CHANCE) {
+              const gemDropChance = dropDist >= 10000 ? 0.12 : dropDist >= 5000 ? 0.06 : dropDist >= 2000 ? 0.03 : 0;
+              if (gemDropChance > 0 && Math.random() < gemDropChance) {
                 const gem = pickGem(dropDist, Math.random);
                 if (gem !== null) {
                   const ang = Math.random() * Math.PI * 2;

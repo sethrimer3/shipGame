@@ -741,19 +741,22 @@ export class Player {
       const healed = this.passiveHpRegenPerSec * dt;
       // Heal the innermost (nearest-core) damaged module
       let remaining = healed;
+      let statsChanged = false;
       for (const m of this.playerModules) {
         if (!m.alive || !m.isConnected || m.isCore || m.hp >= m.maxHp) continue;
         const gap = m.maxHp - m.hp;
         if (remaining >= gap) {
           m.hp = m.maxHp;
           remaining -= gap;
+          statsChanged = true;
         } else {
           m.hp += remaining;
           remaining = 0;
+          statsChanged = true;
         }
         if (remaining <= 0) break;
       }
-      if (healed - remaining > 0) this._recalculateShipStats();
+      if (statsChanged) this._recalculateShipStats();
     }
 
     // ── Damage flash countdown ────────────────────────────────────

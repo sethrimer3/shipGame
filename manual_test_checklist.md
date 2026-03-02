@@ -31,3 +31,9 @@
 - [ ] Press E while shield is depleted and overheat is ≥35 units; confirm shield restores and a HUD message appears.
 - [ ] Press E when shield is already full; confirm "Shield already full" message appears.
 - [ ] Press E when overheat is < 35 units; confirm "Not enough energy" message appears.
+
+- [ ] Buy Crit Mastery gem upgrade and verify crit chance increases (more CRIT! texts visible).
+- [ ] Buy Rapid Reload gem upgrade and verify weapons fire faster per level.
+- [ ] Die twice; verify personal-best stats (kills/level/time/dist) appear on death screen after first run.
+- [ ] Fly close to an enemy (within ~200 units) and verify a pulsing red edge glow appears.
+- [ ] Confirm red glow disappears when moving away from enemies.

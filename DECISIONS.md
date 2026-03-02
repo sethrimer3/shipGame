@@ -188,3 +188,20 @@
 - Implemented via `player.tryEmergencyShieldBoost(shieldAmt, overheatCost)` – returns 0 if shield is full or overheat is insufficient.
 - Shows HUD feedback message and a small camera shake on activation.
 - `_shieldBoostKeyHeld` flag prevents repeat-fire from a held key.
+
+## 2026-03-02 — Gem Shop upgrades + Personal-best stats + Danger proximity indicator
+
+### Two new Gem Shop upgrades (`src/types.ts`, `src/player.ts`, `src/game.ts`)
+- **Crit Mastery** (Ruby, Lv 3): +5% critical hit chance per level. Applied via `player.critChanceBonus`; world.ts reads `PLAYER_CRIT_CHANCE + player.critChanceBonus` for each hit roll. Crit is now consistent across all enemy types (ships, drones, interceptors, gunships, bombers).
+- **Rapid Reload** (Quartz, Lv 3): +8% weapon fire rate per level. Applied via `player.permanentFireRateBonus` folded into `weaponFireRateMultiplier`.
+
+### Personal-best run stats (`src/game.ts`)
+- Tracks best kills, best level, best survival time, and best max distance across all runs.
+- Stats are persisted to `localStorage` under key `shipGame_personalBest` and loaded at startup.
+- On the death screen, a yellow "Best — ..." summary row is drawn when any records exist.
+- `_savePersonalBest()` is called on the frame the player transitions from alive → dead.
+
+### Danger proximity indicator (`src/game.ts`, `src/world.ts`)
+- A pulsing red screen-edge radial gradient appears when any enemy is within 200 world units.
+- Intensity scales from 0 at 200 wu to full at 120 wu; pulses at ~2 Hz using `gameTime`.
+- `world.nearestEnemyDistSq(fromPos)` reuses `_cachedChunks` (no extra chunk lookups per frame).

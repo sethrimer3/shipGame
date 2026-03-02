@@ -501,7 +501,9 @@ export type GemBonusId =
   | 'mining_expertise'
   | 'void_resonance'
   | 'hull_regen'
-  | 'engine_overdrive';
+  | 'engine_overdrive'
+  | 'crit_mastery'
+  | 'rapid_reload';
 
 export interface GemBonusDef {
   id:          GemBonusId;
@@ -528,6 +530,10 @@ export const GEM_BONUS_XP_PER_LEVEL      = 40;
 export const GEM_BONUS_HP_REGEN_PER_LEVEL = 1;
 /** Additive engine top-speed bonus per level in percent (e.g. 10 = +10%). */
 export const GEM_BONUS_ENGINE_SPEED_PER_LEVEL = 10;
+/** Additive critical hit chance bonus per level in percent (e.g. 5 = +5%). */
+export const GEM_BONUS_CRIT_CHANCE_PER_LEVEL = 5;
+/** Additive weapon fire-rate bonus per level in percent (e.g. 8 = +8%). */
+export const GEM_BONUS_FIRE_RATE_PER_LEVEL = 8;
 
 export const GEM_BONUS_DEFS: GemBonusDef[] = [
   { id: 'iron_cache',        name: 'Iron Cache',        description: `+${GEM_BONUS_IRON_PER_LEVEL} Iron ore at loop start`,              gem: Material.Quartz,    gemCost: 3, maxLevel: 5 },
@@ -540,4 +546,6 @@ export const GEM_BONUS_DEFS: GemBonusDef[] = [
   { id: 'void_resonance',    name: 'Void Resonance',    description: `+${GEM_BONUS_XP_PER_LEVEL}% XP earned (permanent)`,              gem: Material.Voidstone, gemCost: 2, maxLevel: 3 },
   { id: 'hull_regen',        name: 'Hull Regen',        description: `+${GEM_BONUS_HP_REGEN_PER_LEVEL} HP/s passive hull repair (permanent)`,    gem: Material.Sapphire,  gemCost: 3, maxLevel: 4 },
   { id: 'engine_overdrive',  name: 'Engine Overdrive',  description: `+${GEM_BONUS_ENGINE_SPEED_PER_LEVEL}% top speed (permanent)`,               gem: Material.Diamond,   gemCost: 3, maxLevel: 3 },
+  { id: 'crit_mastery',      name: 'Crit Mastery',      description: `+${GEM_BONUS_CRIT_CHANCE_PER_LEVEL}% critical hit chance (permanent)`,      gem: Material.Ruby,      gemCost: 3, maxLevel: 3 },
+  { id: 'rapid_reload',      name: 'Rapid Reload',      description: `+${GEM_BONUS_FIRE_RATE_PER_LEVEL}% weapon fire rate (permanent)`,           gem: Material.Quartz,    gemCost: 2, maxLevel: 3 },
 ];

@@ -188,6 +188,10 @@ export class Player {
   passiveHpRegenPerSec = 0;
   /** Permanent engine top-speed bonus (additive fraction, e.g. 0.1 = +10%). */
   permanentSpeedBonus = 0;
+  /** Permanent critical hit chance bonus (additive fraction, e.g. 0.05 = +5%). */
+  critChanceBonus = 0;
+  /** Permanent weapon fire-rate bonus (additive fraction, e.g. 0.08 = +8%). */
+  permanentFireRateBonus = 0;
 
   constructor(
     private readonly input:    InputManager,
@@ -228,9 +232,9 @@ export class Player {
     return 1 + this.moduleFamilyTierWeight.weapon * 0.08 + this.permanentWeaponDamageBonus;
   }
 
-  /** Weapon fire rate multiplier from weapon modules (+6% per module, scaled by tier). */
+  /** Weapon fire rate multiplier from weapon modules (+6% per module, scaled by tier) plus permanent bonus. */
   get weaponFireRateMultiplier(): number {
-    return 1 + this.moduleFamilyTierWeight.weapon * 0.06;
+    return 1 + this.moduleFamilyTierWeight.weapon * 0.06 + this.permanentFireRateBonus;
   }
 
   /** Mining laser damage multiplier from mining-laser family tier weight, plus permanent bonus. */

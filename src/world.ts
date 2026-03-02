@@ -684,7 +684,7 @@ export class World {
           if (this._hitProjectileVsCircle(proj, enemy.pos, enemy.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = enemy.tier.minDist >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const isCrit = !proj.isStationBeam && Math.random() < PLAYER_CRIT_CHANCE;
+            const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
             const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
             const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const result = enemy.damageAt(proj.pos, appliedDamage, particles, Math.random);
@@ -916,12 +916,14 @@ export class World {
           if (this._hitProjectileVsCircle(proj, ic.pos, ic.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(ic.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+            const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const killed = ic.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: ic.pos.x, y: ic.pos.y - ic.radius },
-              `-${appliedDamage}`,
-              '#ffcc44',
+              isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+              isCrit ? '#ff6600' : '#ffcc44',
             ));
             if (killed) {
               this.kills++;
@@ -950,12 +952,14 @@ export class World {
           if (this._hitProjectileVsCircle(proj, gs.pos, gs.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(gs.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+            const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const killed = gs.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: gs.pos.x, y: gs.pos.y - gs.radius },
-              `-${appliedDamage}`,
-              '#ffcc44',
+              isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+              isCrit ? '#ff6600' : '#ffcc44',
             ));
             if (killed) {
               this.kills++;
@@ -989,12 +993,14 @@ export class World {
           if (this._hitProjectileVsCircle(proj, bm.pos, bm.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(bm.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+            const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const killed = bm.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: bm.pos.x, y: bm.pos.y - bm.radius },
-              `-${appliedDamage}`,
-              '#ffcc44',
+              isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+              isCrit ? '#ff6600' : '#ffcc44',
             ));
             if (killed) {
               this.kills++;
@@ -1102,12 +1108,14 @@ export class World {
         if (this._hitProjectileVsCircle(proj, drone.pos, drone.radius)) {
           proj.alive = false;
           const isSapphireArmoredTarget = len(drone.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-          const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+          const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+          const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+          const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
           const killed = drone.damage(appliedDamage, particles, Math.random);
           floatingTexts.push(makeFloatingText(
             { x: drone.pos.x, y: drone.pos.y - drone.radius },
-            `-${appliedDamage}`,
-            '#ffcc44',
+            isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+            isCrit ? '#ff6600' : '#ffcc44',
           ));
           if (killed) {
             this.kills++;
@@ -1564,6 +1572,30 @@ export class World {
     return { enemies, asteroids, pickups: pickupPos, planets };
   }
 
+  /**
+   * Returns the squared world-distance to the nearest alive enemy (any type)
+   * from a given world position.  Returns Infinity when no enemies exist.
+   */
+  nearestEnemyDistSq(fromPos: Vec2): number {
+    let best = Infinity;
+    const check = (pos: Vec2): void => {
+      const dx = pos.x - fromPos.x;
+      const dy = pos.y - fromPos.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) best = d2;
+    };
+    const chunks = this._cachedChunks;
+    for (const chunk of chunks) {
+      for (const e  of chunk.enemies)      if (e.alive)  check(e.pos);
+      for (const ms of chunk.motherships)  if (ms.alive) check(ms.pos);
+      for (const ic of chunk.interceptors) if (ic.alive) check(ic.pos);
+      for (const gs of chunk.gunships)     if (gs.alive) check(gs.pos);
+      for (const bm of chunk.bombers)      if (bm.alive) check(bm.pos);
+    }
+    for (const d of this.drones) if (d.alive) check(d.pos);
+    return best;
+  }
+
   /** Returns per-module occluder quads for all active shadow-casting entities. */
   getShadowOccluders(camPos: Vec2): { verts: Vec2[] }[] {
     const aabb = (l: number, t: number, r: number, b: number) => ({
@@ -1603,3 +1635,4 @@ export class World {
     return result;
   }
 }
+

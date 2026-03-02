@@ -11,7 +11,7 @@ import { StarfieldRenderer } from './starfield';
 import { SunRenderer }       from './sun-renderer';
 import { PostProcessRenderer } from './post-process';
 import { GraphicsConfig, GraphicsQuality, QUALITY_PRESETS } from './graphics-settings';
-import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS, GEM_BONUS_IRON_PER_LEVEL, GEM_BONUS_GOLD_PER_LEVEL, GEM_BONUS_CRYSTAL_PER_LEVEL, GEM_BONUS_HP_PER_LEVEL, GEM_BONUS_SHIELD_PER_LEVEL, GEM_BONUS_WEAPON_PER_LEVEL, GEM_BONUS_MINING_PER_LEVEL, GEM_BONUS_XP_PER_LEVEL, GEM_BONUS_HP_REGEN_PER_LEVEL, GEM_BONUS_ENGINE_SPEED_PER_LEVEL } from './types';
+import { len, Material, MATERIAL_PROPS, TOOLBAR_ITEM_DEFS, Vec2, ShipModuleType, ShipModules, CRAFTING_RECIPES, UPGRADE_TIER_GEMS, MODULE_UPGRADE_BASE_COST, EMPTY_SHIP_MODULES, SHIP_MODULE_FAMILY_BY_TYPE, GEM_MATERIALS, GemBonusId, GEM_BONUS_DEFS, GEM_BONUS_IRON_PER_LEVEL, GEM_BONUS_GOLD_PER_LEVEL, GEM_BONUS_CRYSTAL_PER_LEVEL, GEM_BONUS_HP_PER_LEVEL, GEM_BONUS_SHIELD_PER_LEVEL, GEM_BONUS_WEAPON_PER_LEVEL, GEM_BONUS_MINING_PER_LEVEL, GEM_BONUS_XP_PER_LEVEL, GEM_BONUS_HP_REGEN_PER_LEVEL, GEM_BONUS_ENGINE_SPEED_PER_LEVEL, GEM_BONUS_CRIT_CHANCE_PER_LEVEL, GEM_BONUS_FIRE_RATE_PER_LEVEL } from './types';
 
 /** All material types in priority order for the placer laser. */
 const ALL_MATERIALS = Object.values(Material) as Material[];
@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 42;
+const BUILD_NUMBER = 43;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -276,6 +276,15 @@ class Game {
   /** Shield points restored per boost activation. */
   private static readonly _SHIELD_BOOST_RESTORE_AMT   = 40;
 
+  // ── Personal best stats (persisted via localStorage) ─────────────────────────
+  private _pbKills    = 0;
+  private _pbLevel    = 1;
+  private _pbTimeSec  = 0;
+  private _pbMaxDist  = 0;
+  private static readonly _PB_STORAGE_KEY = 'shipGame_personalBest';
+  /** Tracks whether the player was alive last frame (for death-transition detection). */
+  private _wasAlive   = true;
+
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
     const ctx   = this.canvas.getContext('2d');
@@ -332,6 +341,18 @@ class Game {
         }
       });
     }
+
+    // ── Load personal-best stats from localStorage ───────────────
+    try {
+      const pbRaw = localStorage.getItem(Game._PB_STORAGE_KEY);
+      if (pbRaw) {
+        const pb = JSON.parse(pbRaw) as { kills?: number; level?: number; timeSec?: number; maxDist?: number };
+        this._pbKills   = pb.kills   ?? 0;
+        this._pbLevel   = pb.level   ?? 1;
+        this._pbTimeSec = pb.timeSec ?? 0;
+        this._pbMaxDist = pb.maxDist ?? 0;
+      }
+    } catch { /* ignore corrupt localStorage */ }
 
     // Initial toolbar render
     this.toolbar.renderDOM();
@@ -665,6 +686,12 @@ class Game {
     // ── World / enemies / collisions ────────────────────────────────
     this.world.update(dt, this.player, this.projectiles, this.particles, this.floatingTexts, this.camera.position, this._graphicsConfig);
     this._runAutoCrafting();
+
+    // ── Personal-best update (on death transition) ──────────────────
+    if (this._wasAlive && !this.player.alive) {
+      this._savePersonalBest();
+    }
+    this._wasAlive = this.player.alive;
 
     // ── Kill combo tracking ─────────────────────────────────────────
     const newKills = this.world.kills - this._killComboPrevKills;
@@ -1473,6 +1500,8 @@ class Game {
     this.player.permanentXpMultiplier        = 1 + level('void_resonance') * GEM_BONUS_XP_PER_LEVEL / 100;
     this.player.passiveHpRegenPerSec         = level('hull_regen') * GEM_BONUS_HP_REGEN_PER_LEVEL;
     this.player.permanentSpeedBonus          = level('engine_overdrive') * GEM_BONUS_ENGINE_SPEED_PER_LEVEL / 100;
+    this.player.critChanceBonus              = level('crit_mastery') * GEM_BONUS_CRIT_CHANCE_PER_LEVEL / 100;
+    this.player.permanentFireRateBonus       = level('rapid_reload') * GEM_BONUS_FIRE_RATE_PER_LEVEL / 100;
   }
 
   /** Add starting resource bonuses to inventory (called after inventory reset). */
@@ -1481,6 +1510,25 @@ class Game {
     this.player.addResource(Material.Iron,    level('iron_cache')        * GEM_BONUS_IRON_PER_LEVEL);
     this.player.addResource(Material.Gold,    level('gold_reserve')      * GEM_BONUS_GOLD_PER_LEVEL);
     this.player.addResource(Material.Crystal, level('crystal_stockpile') * GEM_BONUS_CRYSTAL_PER_LEVEL);
+  }
+
+  /** Save personal-best stats to localStorage when the current run beats any record. */
+  private _savePersonalBest(): void {
+    let changed = false;
+    if (this.world.kills   > this._pbKills)           { this._pbKills   = this.world.kills;          changed = true; }
+    if (this.player.level  > this._pbLevel)           { this._pbLevel   = this.player.level;          changed = true; }
+    if (this._timeSurvived > this._pbTimeSec)         { this._pbTimeSec = this._timeSurvived;         changed = true; }
+    if (this._maxDistFromOrigin > this._pbMaxDist)    { this._pbMaxDist = this._maxDistFromOrigin;    changed = true; }
+    if (changed) {
+      try {
+        localStorage.setItem(Game._PB_STORAGE_KEY, JSON.stringify({
+          kills:   this._pbKills,
+          level:   this._pbLevel,
+          timeSec: this._pbTimeSec,
+          maxDist: this._pbMaxDist,
+        }));
+      } catch { /* ignore write errors */ }
+    }
   }
 
   /** Attempt to buy one level of a gem bonus. Returns true on success. */
@@ -1759,7 +1807,33 @@ class Game {
       this._drawEnemyIndicators(ctx, minimapData.enemies);
     }
 
-    // ── Module hover tooltip ────────────────────────────────────────
+    // ── Danger proximity indicator (red edge glow when an enemy is very close) ──
+    if (this.player.alive && !this._paused) {
+      /** World units within which the danger glow starts fading in. */
+      const DANGER_INNER_DIST_WORLD = 200;
+      /** World units at which the danger glow is at maximum intensity. */
+      const DANGER_OUTER_DIST_WORLD = 120;
+      const nearestSq = this.world.nearestEnemyDistSq(this.player.pos);
+      if (nearestSq < DANGER_INNER_DIST_WORLD * DANGER_INNER_DIST_WORLD) {
+        const nearestDist = Math.sqrt(nearestSq);
+        const intensity = Math.max(0, Math.min(1, 1 - (nearestDist - DANGER_OUTER_DIST_WORLD) / (DANGER_INNER_DIST_WORLD - DANGER_OUTER_DIST_WORLD)));
+        // Pulse: 0.5–1.0 brightness oscillation at ~2 Hz
+        const pulse = 0.55 + Math.abs(Math.sin(this.gameTime * Math.PI * 2)) * 0.45;
+        const alpha = intensity * pulse * 0.5;
+        const grad = ctx.createRadialGradient(
+          canvas.width / 2, canvas.height / 2, canvas.height * 0.35,
+          canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.75,
+        );
+        grad.addColorStop(0, 'rgba(255,0,0,0)');
+        grad.addColorStop(1, `rgba(220,0,0,${alpha.toFixed(3)})`);
+        ctx.save();
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+    }
+
+
     if (this.player.alive && !this._paused && !this._shipEditorOpen && !this._settingsOpen) {
       const mw = this.camera.screenToWorld(this.input.mousePos);
       const info = this.player.getModuleInfoAtWorldPos(mw);
@@ -1868,6 +1942,16 @@ class Game {
         ctx.fillText(`Kills: ${this.world.kills}   Level: ${this.player.level}`, cx, cy - 10);
         ctx.fillText(`Time: ${timeStr}   Max Dist: ${Math.round(this._maxDistFromOrigin)}`, cx, cy + 22);
 
+        // Personal best row
+        if (this._pbKills > 0 || this._pbTimeSec > 0) {
+          const pbMins = Math.floor(this._pbTimeSec / 60);
+          const pbSecs = Math.floor(this._pbTimeSec % 60);
+          const pbTimeStr = `${pbMins}:${String(pbSecs).padStart(2, '0')}`;
+          ctx.font      = '11px Courier New';
+          ctx.fillStyle = 'rgba(255,220,80,0.65)';
+          ctx.fillText(`Best — Kills: ${this._pbKills}  Lv: ${this._pbLevel}  Time: ${pbTimeStr}  Dist: ${Math.round(this._pbMaxDist)}`, cx, cy + 40);
+        }
+
         // Gem totals row
         const heldGems = GEM_MATERIALS.filter(g => this.player.getResource(g) > 0);
         if (heldGems.length > 0) {
@@ -1875,12 +1959,12 @@ class Game {
           let gemStr = 'Gems: ';
           for (const g of heldGems) gemStr += `${this.player.getResource(g)}× ${g}  `;
           ctx.fillStyle = 'rgba(200,230,255,0.7)';
-          ctx.fillText(gemStr.trim(), cx, cy + 50);
+          ctx.fillText(gemStr.trim(), cx, cy + 58);
         }
 
         // Buttons row
         const BTN_H = 28;
-        const BTN_Y = cy + (heldGems.length > 0 ? 74 : 58);
+        const BTN_Y = cy + (heldGems.length > 0 ? 82 : 66);
 
         // Gem Shop button
         ctx.font = '13px Courier New';

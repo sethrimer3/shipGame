@@ -93,6 +93,8 @@ const PICKUP_HALF_SIZE      = 5;    // half-side of pickup draw rect (world unit
 
 const HEALTH_DROP_CHANCE        = 0.15; // probability of a health pack dropping on enemy kill
 const HEALTH_DROP_XP_MULTIPLIER = 0.3;  // heal amount = 10 + xpValue * this
+/** Probability that a player projectile deals a critical hit (2× damage). */
+const PLAYER_CRIT_CHANCE = 0.15;
 
 // ── Loose planet particle (water/sand ejected from a planet surface) ──────────
 interface LoosePlanetParticle {
@@ -682,7 +684,9 @@ export class World {
           if (this._hitProjectileVsCircle(proj, enemy.pos, enemy.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = enemy.tier.minDist >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+            const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const result = enemy.damageAt(proj.pos, appliedDamage, particles, Math.random);
             // Alert the enemy: player hit it, so it should start chasing
             if (!result.killed) enemy.alertedByPlayer();
@@ -692,8 +696,8 @@ export class World {
             }
             floatingTexts.push(makeFloatingText(
               { x: enemy.pos.x, y: enemy.pos.y - enemy.radius },
-              `-${appliedDamage}`,
-              '#ffcc44',
+              isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+              isCrit ? '#ff6600' : '#ffcc44',
             ));
             if (result.killed) {
               this.kills++;
@@ -717,6 +721,23 @@ export class World {
                   lifetime: PICKUP_LIFETIME,
                   maxLife:  PICKUP_LIFETIME,
                 });
+              }
+              // ── Gem drop (deep-zone enemies) ───────────────────────
+              const dropDist = len(enemy.pos);
+              const gemDropChance = dropDist >= 10000 ? 0.12 : dropDist >= 5000 ? 0.06 : dropDist >= 2000 ? 0.03 : 0;
+              if (gemDropChance > 0 && Math.random() < gemDropChance) {
+                const gem = pickGem(dropDist, Math.random);
+                if (gem !== null) {
+                  const ang = Math.random() * Math.PI * 2;
+                  this.pickups.push({
+                    pos:      { x: enemy.pos.x, y: enemy.pos.y },
+                    vel:      { x: Math.cos(ang) * 60, y: Math.sin(ang) * 60 },
+                    material: gem,
+                    qty:      1,
+                    lifetime: PICKUP_LIFETIME,
+                    maxLife:  PICKUP_LIFETIME,
+                  });
+                }
               }
               // ── Health pack drop (15% chance) ──────────────────────
               if (Math.random() < HEALTH_DROP_CHANCE) {
@@ -895,12 +916,14 @@ export class World {
           if (this._hitProjectileVsCircle(proj, ic.pos, ic.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(ic.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+            const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const killed = ic.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: ic.pos.x, y: ic.pos.y - ic.radius },
-              `-${appliedDamage}`,
-              '#ffcc44',
+              isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+              isCrit ? '#ff6600' : '#ffcc44',
             ));
             if (killed) {
               this.kills++;
@@ -929,12 +952,14 @@ export class World {
           if (this._hitProjectileVsCircle(proj, gs.pos, gs.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(gs.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+            const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const killed = gs.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: gs.pos.x, y: gs.pos.y - gs.radius },
-              `-${appliedDamage}`,
-              '#ffcc44',
+              isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+              isCrit ? '#ff6600' : '#ffcc44',
             ));
             if (killed) {
               this.kills++;
@@ -968,12 +993,14 @@ export class World {
           if (this._hitProjectileVsCircle(proj, bm.pos, bm.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = len(bm.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+            const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const killed = bm.damage(appliedDamage, particles, Math.random);
             floatingTexts.push(makeFloatingText(
               { x: bm.pos.x, y: bm.pos.y - bm.radius },
-              `-${appliedDamage}`,
-              '#ffcc44',
+              isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+              isCrit ? '#ff6600' : '#ffcc44',
             ));
             if (killed) {
               this.kills++;
@@ -1081,12 +1108,14 @@ export class World {
         if (this._hitProjectileVsCircle(proj, drone.pos, drone.radius)) {
           proj.alive = false;
           const isSapphireArmoredTarget = len(drone.pos) >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-          const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+          const isCrit = !proj.isStationBeam && Math.random() < (PLAYER_CRIT_CHANCE + player.critChanceBonus);
+          const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+          const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
           const killed = drone.damage(appliedDamage, particles, Math.random);
           floatingTexts.push(makeFloatingText(
             { x: drone.pos.x, y: drone.pos.y - drone.radius },
-            `-${appliedDamage}`,
-            '#ffcc44',
+            isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+            isCrit ? '#ff6600' : '#ffcc44',
           ));
           if (killed) {
             this.kills++;
@@ -1543,6 +1572,30 @@ export class World {
     return { enemies, asteroids, pickups: pickupPos, planets };
   }
 
+  /**
+   * Returns the squared world-distance to the nearest alive enemy (any type)
+   * from a given world position.  Returns Infinity when no enemies exist.
+   */
+  nearestEnemyDistSq(fromPos: Vec2): number {
+    let best = Infinity;
+    const check = (pos: Vec2): void => {
+      const dx = pos.x - fromPos.x;
+      const dy = pos.y - fromPos.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) best = d2;
+    };
+    const chunks = this._cachedChunks;
+    for (const chunk of chunks) {
+      for (const e  of chunk.enemies)      if (e.alive)  check(e.pos);
+      for (const ms of chunk.motherships)  if (ms.alive) check(ms.pos);
+      for (const ic of chunk.interceptors) if (ic.alive) check(ic.pos);
+      for (const gs of chunk.gunships)     if (gs.alive) check(gs.pos);
+      for (const bm of chunk.bombers)      if (bm.alive) check(bm.pos);
+    }
+    for (const d of this.drones) if (d.alive) check(d.pos);
+    return best;
+  }
+
   /** Returns per-module occluder quads for all active shadow-casting entities. */
   getShadowOccluders(camPos: Vec2): { verts: Vec2[] }[] {
     const aabb = (l: number, t: number, r: number, b: number) => ({
@@ -1582,3 +1635,4 @@ export class World {
     return result;
   }
 }
+

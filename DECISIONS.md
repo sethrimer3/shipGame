@@ -152,3 +152,56 @@
 - Planet impacts now run a local support scan around the blast and detach non-lava molecules that no longer have inward support toward the core.
 - Detached molecules are emitted through the existing `SplashParticleData` path as loose world particles, so mountain overhangs collapse instead of floating after their base is removed.
 - This keeps the collapse behaviour predictable and localized (bounded by impact radius scaling) while preserving performance by avoiding per-frame global terrain connectivity checks.
+
+## 2026-03-02 — Kill combo system + new gem shop upgrades + enemy gem drops
+
+### Kill combo system (`src/game.ts`)
+- Consecutive kills within a 4-second window build a combo streak tracked in `_killComboCount`.
+- Starting at 2× combo, each kill awards bonus XP (`comboCount × 5`) and shows a `N× COMBO! +XP` floating text above the player.
+- At 5× or higher combos, a light camera shake fires to reinforce the feel.
+- Combo resets automatically when the 4-second window expires between kills.
+
+### Two new gem shop upgrades (`src/types.ts`, `src/player.ts`, `src/game.ts`)
+- **Hull Regen** (Sapphire, up to Lv 4): +1 HP/s passive hull repair per level. Applied via `player.passiveHpRegenPerSec` each frame in `player.update()`.
+- **Engine Overdrive** (Diamond, up to Lv 3): +10% top speed per level. Applied via `player.permanentSpeedBonus` folded into `topSpeedMultiplier`.
+
+### Enemy gem drops (`src/world.ts`)
+- Enemies killed at distance ≥ 2000 wu have a small chance of dropping a gem pickup in addition to normal material loot.
+- Drop rate scales with zone depth: 3% at 2000 wu, 6% at 5000 wu, 12% at 10 000 wu.
+- Gem type is drawn from `pickGem(dropDist)` so rarity scales naturally with world distance.
+
+## 2026-03-02 — Critical hits + Cluster Bomb weapon + Emergency Shield Boost
+
+### Critical hit system (`src/world.ts`)
+- Player projectiles have a 15% (`PLAYER_CRIT_CHANCE`) chance to deal 2× damage on hit.
+- Critical hits show an orange `-N CRIT!` floating text instead of the normal yellow `-N` text, giving clear feedback.
+- Crits do not apply to `StationBeam` projectiles (which have separate sapphire-armour logic).
+
+### New craftable weapon: Cluster Bomb (`src/types.ts`, `src/game.ts`)
+- New `ShipModuleType` `'cluster_bomb'` added, in the `'weapon'` family.
+- Recipe: 4× Iron + 2× Gold + 3× Rock. Fires **5 projectiles in a 120° arc** (`spreadArcRad: Math.PI * 2 / 3`).
+- `spreadArcRad` optional field added to `ToolbarItemDef` so each weapon can declare its own spread angle (default 20° if omitted).
+- Player firing code in `player.ts` reads `weapon.spreadArcRad ?? (Math.PI / 9)` instead of the old hard-coded constant.
+
+### Emergency Shield Boost – E key (`src/player.ts`, `src/game.ts`)
+- Press **E** to instantly convert 35 units of overheat energy into up to 40 shield points.
+- Implemented via `player.tryEmergencyShieldBoost(shieldAmt, overheatCost)` – returns 0 if shield is full or overheat is insufficient.
+- Shows HUD feedback message and a small camera shake on activation.
+- `_shieldBoostKeyHeld` flag prevents repeat-fire from a held key.
+
+## 2026-03-02 — Gem Shop upgrades + Personal-best stats + Danger proximity indicator
+
+### Two new Gem Shop upgrades (`src/types.ts`, `src/player.ts`, `src/game.ts`)
+- **Crit Mastery** (Ruby, Lv 3): +5% critical hit chance per level. Applied via `player.critChanceBonus`; world.ts reads `PLAYER_CRIT_CHANCE + player.critChanceBonus` for each hit roll. Crit is now consistent across all enemy types (ships, drones, interceptors, gunships, bombers).
+- **Rapid Reload** (Quartz, Lv 3): +8% weapon fire rate per level. Applied via `player.permanentFireRateBonus` folded into `weaponFireRateMultiplier`.
+
+### Personal-best run stats (`src/game.ts`)
+- Tracks best kills, best level, best survival time, and best max distance across all runs.
+- Stats are persisted to `localStorage` under key `shipGame_personalBest` and loaded at startup.
+- On the death screen, a yellow "Best — ..." summary row is drawn when any records exist.
+- `_savePersonalBest()` is called on the frame the player transitions from alive → dead.
+
+### Danger proximity indicator (`src/game.ts`, `src/world.ts`)
+- A pulsing red screen-edge radial gradient appears when any enemy is within 200 world units.
+- Intensity scales from 0 at 200 wu to full at 120 wu; pulses at ~2 Hz using `gameTime`.
+- `world.nearestEnemyDistSq(fromPos)` reuses `_cachedChunks` (no extra chunk lookups per frame).

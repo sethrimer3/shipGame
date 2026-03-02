@@ -184,6 +184,14 @@ export class Player {
   permanentMiningBonus = 0;
   /** Permanent XP multiplier (1 = normal, 1.4 = +40%). */
   permanentXpMultiplier = 1;
+  /** Passive hull HP regeneration per second (from Hull Regen gem upgrade). */
+  passiveHpRegenPerSec = 0;
+  /** Permanent engine top-speed bonus (additive fraction, e.g. 0.1 = +10%). */
+  permanentSpeedBonus = 0;
+  /** Permanent critical hit chance bonus (additive fraction, e.g. 0.05 = +5%). */
+  critChanceBonus = 0;
+  /** Permanent weapon fire-rate bonus (additive fraction, e.g. 0.08 = +8%). */
+  permanentFireRateBonus = 0;
 
   constructor(
     private readonly input:    InputManager,
@@ -208,7 +216,7 @@ export class Player {
   }
 
   get topSpeedMultiplier(): number {
-    return 1 + this.moduleFamilyTierWeight.engine * 0.12;
+    return 1 + this.moduleFamilyTierWeight.engine * 0.12 + this.permanentSpeedBonus;
   }
 
   get overheatDrainMultiplier(): number {
@@ -224,9 +232,9 @@ export class Player {
     return 1 + this.moduleFamilyTierWeight.weapon * 0.08 + this.permanentWeaponDamageBonus;
   }
 
-  /** Weapon fire rate multiplier from weapon modules (+6% per module, scaled by tier). */
+  /** Weapon fire rate multiplier from weapon modules (+6% per module, scaled by tier) plus permanent bonus. */
   get weaponFireRateMultiplier(): number {
-    return 1 + this.moduleFamilyTierWeight.weapon * 0.06;
+    return 1 + this.moduleFamilyTierWeight.weapon * 0.06 + this.permanentFireRateBonus;
   }
 
   /** Mining laser damage multiplier from mining-laser family tier weight, plus permanent bonus. */
@@ -473,6 +481,20 @@ export class Player {
 
   getResource(mat: Material): number {
     return this.inventory.get(mat)?.quantity ?? 0;
+  }
+
+  /**
+   * Attempt to consume overheat energy to instantly restore shield.
+   * Returns the amount of shield actually restored (0 if not enough energy or shield full).
+   */
+  tryEmergencyShieldBoost(shieldRestoreAmtHp: number, overheatCostUnits: number): number {
+    if (this.overheatMeter < overheatCostUnits) return 0;
+    const healed = Math.min(shieldRestoreAmtHp, this.maxShield - this.shield);
+    if (healed <= 0) return 0;
+    this.overheatMeter -= overheatCostUnits;
+    this.shield += healed;
+    this.shieldRegenDelay = 0;
+    return healed;
   }
 
   equipItem(slotIndex: number, item: ToolbarItemDef): void {
@@ -732,6 +754,29 @@ export class Player {
       this.shield = Math.min(this.maxShield, this.shield + regenRate * dt);
     }
 
+    // ── Passive hull HP regen (Hull Regen gem upgrade) ────────────
+    if (this.passiveHpRegenPerSec > 0 && this.hp < this.maxHp) {
+      const healed = this.passiveHpRegenPerSec * dt;
+      // Heal the innermost (nearest-core) damaged module
+      let remaining = healed;
+      let statsChanged = false;
+      for (const m of this.playerModules) {
+        if (!m.alive || !m.isConnected || m.isCore || m.hp >= m.maxHp) continue;
+        const gap = m.maxHp - m.hp;
+        if (remaining >= gap) {
+          m.hp = m.maxHp;
+          remaining -= gap;
+          statsChanged = true;
+        } else {
+          m.hp += remaining;
+          remaining = 0;
+          statsChanged = true;
+        }
+        if (remaining <= 0) break;
+      }
+      if (statsChanged) this._recalculateShipStats();
+    }
+
     // ── Damage flash countdown ────────────────────────────────────
     if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
 
@@ -771,9 +816,9 @@ export class Player {
         ));
       } else {
         const spreadCount = weapon.spreadShots ?? 1;
-        const SPREAD_ARC  = Math.PI / 9; // 20° total arc
+        const spreadArc   = weapon.spreadArcRad ?? (Math.PI / 9); // default 20° total arc
         for (let si = 0; si < spreadCount; si++) {
-          const offset = spreadCount > 1 ? (si / (spreadCount - 1) - 0.5) * SPREAD_ARC : 0;
+          const offset = spreadCount > 1 ? (si / (spreadCount - 1) - 0.5) * spreadArc : 0;
           const dir = fromAngle(this.angle + offset);
           projectiles.push(new Projectile(
             this.pos, dir, weapon.projectileSpeed, adjustedDamage,

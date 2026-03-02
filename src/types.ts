@@ -171,12 +171,14 @@ export type ShipModuleType =
   | 'resonance_beam'
   | 'placer_laser'
   | 'spread_cannon'
-  | 'missile_launcher';
+  | 'missile_launcher'
+  | 'cluster_bomb';
 
 export const SHIP_MODULE_TYPES: ShipModuleType[] = [
   'hull', 'engine', 'shield', 'coolant', 'weapon', 'miningLaser',
   'basic_cannon', 'laser_beam', 'shield_gen', 'heavy_armor', 'dark_engine', 'mining_laser',
   'void_lance', 'resonance_beam', 'placer_laser', 'spread_cannon', 'missile_launcher',
+  'cluster_bomb',
 ];
 
 export const SHIP_MODULE_FAMILY_BY_TYPE: Record<ShipModuleType, ShipModuleFamily> = {
@@ -197,6 +199,7 @@ export const SHIP_MODULE_FAMILY_BY_TYPE: Record<ShipModuleType, ShipModuleFamily
   placer_laser: 'coolant',
   spread_cannon: 'weapon',
   missile_launcher: 'weapon',
+  cluster_bomb: 'weapon',
 };
 
 export interface ShipModules {
@@ -259,6 +262,7 @@ export const MODULE_UPGRADE_BASE_COST: Record<ShipModuleType, number> = {
   placer_laser: 3,
   spread_cannon: 6,
   missile_launcher: 6,
+  cluster_bomb: 6,
 };
 
 // ── Crafting recipes ──────────────────────────────────────────────────────────
@@ -387,6 +391,16 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     outputQty:   1,
     moduleType:  'missile_launcher',
   },
+  {
+    id:          'cluster_bomb',
+    name:        'Cluster Bomb',
+    description: 'Fires 5 projectiles in a 120° arc. Shreds groups of enemies.',
+    icon:        '💣',
+    inputs:      [{ material: Material.Iron, quantity: 4 }, { material: Material.Gold, quantity: 2 }, { material: Material.Rock, quantity: 3 }],
+    outputId:    'cluster_bomb',
+    outputQty:   1,
+    moduleType:  'cluster_bomb',
+  },
 ];
 
 export interface ToolbarItemDef {
@@ -403,9 +417,14 @@ export interface ToolbarItemDef {
   projectileRadius: number;
   /** If > 1, fires this many projectiles in a spread arc. */
   spreadShots?: number;
+  /** Total arc angle in radians for spread shots (default π/9 ≈ 20°). */
+  spreadArcRad?: number;
   /** If true, fired projectile homes toward the mouse cursor. */
   isHoming?: boolean;
 }
+
+/** Spread arc in radians for the Cluster Bomb (5 shots across 120°). */
+const CLUSTER_BOMB_SPREAD_ARC_RAD = Math.PI * 2 / 3;
 
 export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
   basic_cannon: {
@@ -463,6 +482,11 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
     type: 'weapon', damage: 42, fireRate: 0.65, projectileSpeed: 300,
     projectileColor: '#ff8800', projectileRadius: 5, isHoming: true,
   },
+  cluster_bomb: {
+    id: 'cluster_bomb', name: 'Cluster Bomb', icon: '💣', color: '#c0a030',
+    type: 'weapon', damage: 22, fireRate: 0.7, projectileSpeed: 400,
+    projectileColor: '#ffcc44', projectileRadius: 6, spreadShots: 5, spreadArcRad: CLUSTER_BOMB_SPREAD_ARC_RAD,
+  },
 };
 
 // ── Gem bonus (incremental loop) system ───────────────────────────────────────
@@ -475,7 +499,11 @@ export type GemBonusId =
   | 'power_shields'
   | 'combat_training'
   | 'mining_expertise'
-  | 'void_resonance';
+  | 'void_resonance'
+  | 'hull_regen'
+  | 'engine_overdrive'
+  | 'crit_mastery'
+  | 'rapid_reload';
 
 export interface GemBonusDef {
   id:          GemBonusId;
@@ -498,6 +526,14 @@ export const GEM_BONUS_WEAPON_PER_LEVEL  = 12;
 export const GEM_BONUS_MINING_PER_LEVEL  = 20;
 /** Additive XP multiplier in percent per level (e.g. 40 = +40%). */
 export const GEM_BONUS_XP_PER_LEVEL      = 40;
+/** Passive hull HP regeneration per second per level. */
+export const GEM_BONUS_HP_REGEN_PER_LEVEL = 1;
+/** Additive engine top-speed bonus per level in percent (e.g. 10 = +10%). */
+export const GEM_BONUS_ENGINE_SPEED_PER_LEVEL = 10;
+/** Additive critical hit chance bonus per level in percent (e.g. 5 = +5%). */
+export const GEM_BONUS_CRIT_CHANCE_PER_LEVEL = 5;
+/** Additive weapon fire-rate bonus per level in percent (e.g. 8 = +8%). */
+export const GEM_BONUS_FIRE_RATE_PER_LEVEL = 8;
 
 export const GEM_BONUS_DEFS: GemBonusDef[] = [
   { id: 'iron_cache',        name: 'Iron Cache',        description: `+${GEM_BONUS_IRON_PER_LEVEL} Iron ore at loop start`,              gem: Material.Quartz,    gemCost: 3, maxLevel: 5 },
@@ -508,4 +544,8 @@ export const GEM_BONUS_DEFS: GemBonusDef[] = [
   { id: 'combat_training',   name: 'Combat Training',   description: `+${GEM_BONUS_WEAPON_PER_LEVEL}% weapon damage (permanent)`,       gem: Material.Iolite,    gemCost: 2, maxLevel: 4 },
   { id: 'mining_expertise',  name: 'Mining Expertise',  description: `+${GEM_BONUS_MINING_PER_LEVEL}% mining damage (permanent)`,       gem: Material.Amethyst,  gemCost: 2, maxLevel: 4 },
   { id: 'void_resonance',    name: 'Void Resonance',    description: `+${GEM_BONUS_XP_PER_LEVEL}% XP earned (permanent)`,              gem: Material.Voidstone, gemCost: 2, maxLevel: 3 },
+  { id: 'hull_regen',        name: 'Hull Regen',        description: `+${GEM_BONUS_HP_REGEN_PER_LEVEL} HP/s passive hull repair (permanent)`,    gem: Material.Sapphire,  gemCost: 3, maxLevel: 4 },
+  { id: 'engine_overdrive',  name: 'Engine Overdrive',  description: `+${GEM_BONUS_ENGINE_SPEED_PER_LEVEL}% top speed (permanent)`,               gem: Material.Diamond,   gemCost: 3, maxLevel: 3 },
+  { id: 'crit_mastery',      name: 'Crit Mastery',      description: `+${GEM_BONUS_CRIT_CHANCE_PER_LEVEL}% critical hit chance (permanent)`,      gem: Material.Ruby,      gemCost: 3, maxLevel: 3 },
+  { id: 'rapid_reload',      name: 'Rapid Reload',      description: `+${GEM_BONUS_FIRE_RATE_PER_LEVEL}% weapon fire rate (permanent)`,           gem: Material.Quartz,    gemCost: 2, maxLevel: 3 },
 ];

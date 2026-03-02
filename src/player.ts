@@ -483,11 +483,11 @@ export class Player {
    * Attempt to consume overheat energy to instantly restore shield.
    * Returns the amount of shield actually restored (0 if not enough energy or shield full).
    */
-  tryEmergencyShieldBoost(shieldRestoreAmt: number, overheatCost: number): number {
-    if (this.overheatMeter < overheatCost) return 0;
-    const healed = Math.min(shieldRestoreAmt, this.maxShield - this.shield);
+  tryEmergencyShieldBoost(shieldRestoreAmtHp: number, overheatCostUnits: number): number {
+    if (this.overheatMeter < overheatCostUnits) return 0;
+    const healed = Math.min(shieldRestoreAmtHp, this.maxShield - this.shield);
     if (healed <= 0) return 0;
-    this.overheatMeter -= overheatCost;
+    this.overheatMeter -= overheatCostUnits;
     this.shield += healed;
     this.shieldRegenDelay = 0;
     return healed;

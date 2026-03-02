@@ -423,6 +423,9 @@ export interface ToolbarItemDef {
   isHoming?: boolean;
 }
 
+/** Spread arc in radians for the Cluster Bomb (5 shots across 120°). */
+const CLUSTER_BOMB_SPREAD_ARC_RAD = Math.PI * 2 / 3;
+
 export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
   basic_cannon: {
     id: 'basic_cannon', name: 'Basic Cannon', icon: '🔫', color: '#c07840',
@@ -482,7 +485,7 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
   cluster_bomb: {
     id: 'cluster_bomb', name: 'Cluster Bomb', icon: '💣', color: '#c0a030',
     type: 'weapon', damage: 22, fireRate: 0.7, projectileSpeed: 400,
-    projectileColor: '#ffcc44', projectileRadius: 6, spreadShots: 5, spreadArcRad: Math.PI * 2 / 3,
+    projectileColor: '#ffcc44', projectileRadius: 6, spreadShots: 5, spreadArcRad: CLUSTER_BOMB_SPREAD_ARC_RAD,
   },
 };
 

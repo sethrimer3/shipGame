@@ -613,6 +613,27 @@ export class Planet {
       this.pos.y + this.radius < minY || this.pos.y - this.radius > maxY
     ) return;
 
+    // ── Planetary atmosphere glow ─────────────────────────────────
+    const atmoRadius = this.radius * 1.28;
+    const atmoInner  = this.radius * 0.88;
+    const atmoGrad = ctx.createRadialGradient(
+      this.pos.x, this.pos.y, atmoInner,
+      this.pos.x, this.pos.y, atmoRadius,
+    );
+    // Color the atmosphere based on the dominant surface type (minimap color tint)
+    const mc = this._minimapColor;
+    atmoGrad.addColorStop(0,    `${mc}00`);
+    atmoGrad.addColorStop(0.55, `${mc}22`);
+    atmoGrad.addColorStop(0.82, `${mc}44`);
+    atmoGrad.addColorStop(1,    `${mc}00`);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = atmoGrad;
+    ctx.beginPath();
+    ctx.arc(this.pos.x, this.pos.y, atmoRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     const coreRadius = this.radius * LAVA_CORE_RATIO;
     if (
       this.pos.x + coreRadius >= minX && this.pos.x - coreRadius <= maxX &&

@@ -56,8 +56,8 @@ const BOMBER_SPAWN_CHANCE      = 0.28; // probability per chunk attempt
 // Planet spawning
 const PLANET_MIN_DIST     = 500;   // minimum world distance for planets
 const PLANET_SPAWN_CHANCE = 0.25;  // probability per chunk attempt
-const PLANET_MIN_RADIUS   = 240;   // minimum planet radius (world units) – 3× original
-const PLANET_MAX_RADIUS   = 480;   // maximum planet radius (world units) – 3× original
+const PLANET_MIN_RADIUS   = 190;   // minimum planet radius (world units)
+const PLANET_MAX_RADIUS   = 380;   // maximum planet radius (world units)
 
 /** Gravitational acceleration constant for planet attraction: accel = K * radius / d² */
 const PLANET_GRAVITY_STRENGTH = 2000;
@@ -168,18 +168,30 @@ function chunkSeed(cx: number, cy: number): number {
 // ── Star background (generated once per chunk, never changes) ─────────────
 interface Star { x: number; y: number; r: number; brightness: number }
 
+/** A large diffuse cloud of colour rendered before other world geometry. */
+interface NebulaPatch {
+  x:       number;
+  y:       number;
+  radiusA: number;  // semi-axis along X
+  radiusB: number;  // semi-axis along Y
+  angle:   number;  // rotation angle (radians)
+  colorA:  string;  // inner rgba string
+  colorB:  string;  // outer rgba string
+}
+
 interface Chunk {
-  cx:           number;
-  cy:           number;
-  asteroids:    Asteroid[];
-  enemies:      Enemy[];
-  stars:        Star[];
-  motherships:  Mothership[];
-  turrets:      AsteroidTurret[];
-  interceptors: Interceptor[];
-  gunships:     Gunship[];
-  bombers:      Bomber[];
-  planets:      Planet[];
+  cx:            number;
+  cy:            number;
+  asteroids:     Asteroid[];
+  enemies:       Enemy[];
+  stars:         Star[];
+  motherships:   Mothership[];
+  turrets:       AsteroidTurret[];
+  interceptors:  Interceptor[];
+  gunships:      Gunship[];
+  bombers:       Bomber[];
+  planets:       Planet[];
+  nebulaPatches: NebulaPatch[];
 }
 
 export class World {
@@ -285,6 +297,7 @@ export class World {
     const gunships:     Gunship[]        = [];
     const bombers:      Bomber[]         = [];
     const planets:      Planet[]         = [];
+    const nebulaPatches: NebulaPatch[]  = [];
 
     // ── Stars ──────────────────────────────────────────────────────
     for (let i = 0; i < STAR_DENSITY; i++) {
@@ -296,8 +309,33 @@ export class World {
       });
     }
 
+    // ── Nebula patches ─────────────────────────────────────────────
+    // Sparse coloured clouds; 0–2 per chunk based on RNG
+    const nebulaPaletteInner = [
+      'rgba(60,30,120,0.18)', 'rgba(10,80,140,0.16)', 'rgba(120,30,60,0.16)',
+      'rgba(20,100,80,0.14)', 'rgba(90,50,140,0.18)', 'rgba(10,60,130,0.14)',
+    ];
+    const nebulaPaletteOuter = [
+      'rgba(60,20,100,0)',    'rgba(8,60,110,0)',      'rgba(100,20,50,0)',
+      'rgba(10,80,60,0)',     'rgba(70,40,120,0)',     'rgba(8,50,110,0)',
+    ];
+    const shouldSpawnNebula = rng() < 0.65;
+    const nebulaCount = shouldSpawnNebula ? (rng() < 0.45 ? 2 : 1) : 0;
+    for (let i = 0; i < nebulaCount; i++) {
+      const pi = Math.floor(rng() * nebulaPaletteInner.length);
+      nebulaPatches.push({
+        x:       baseX + rng() * CHUNK_SIZE,
+        y:       baseY + rng() * CHUNK_SIZE,
+        radiusA: 280 + rng() * 420,
+        radiusB: 180 + rng() * 320,
+        angle:   rng() * Math.PI,
+        colorA:  nebulaPaletteInner[pi],
+        colorB:  nebulaPaletteOuter[pi],
+      });
+    }
+
     // Skip chunks very close to spawn (safe zone around station)
-    if (distFromOrigin < STATION_RESET_RADIUS_WORLD + CHUNK_SIZE * 0.25) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets };
+    if (distFromOrigin < STATION_RESET_RADIUS_WORLD + CHUNK_SIZE * 0.25) return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets, nebulaPatches };
 
     // ── Asteroids ──────────────────────────────────────────────────
     for (let i = 0; i < ASTEROIDS_PER_CHUNK; i++) {
@@ -426,7 +464,7 @@ export class World {
       asteroids.length = j;
     }
 
-    return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets };
+    return { cx, cy, asteroids, enemies, stars, motherships, turrets, interceptors, gunships, bombers, planets, nebulaPatches };
   }
 
   /** Helper: place 1–2 turrets on perimeter blocks of an asteroid. */
@@ -1379,6 +1417,30 @@ export class World {
     const minY = camPos.y - halfH - cullMargin;
     const maxY = camPos.y + halfH + cullMargin;
 
+    // ── Nebula patches (drawn before all other world geometry) ─────
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const chunk of chunks) {
+      for (const nb of chunk.nebulaPatches) {
+        if (nb.x + nb.radiusA < minX || nb.x - nb.radiusA > maxX ||
+            nb.y + nb.radiusB < minY || nb.y - nb.radiusB > maxY) continue;
+        ctx.save();
+        ctx.translate(nb.x, nb.y);
+        ctx.rotate(nb.angle);
+        ctx.scale(nb.radiusA, nb.radiusB);
+        const ellipseGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+        ellipseGrad.addColorStop(0,    nb.colorA);
+        ellipseGrad.addColorStop(0.55, nb.colorA);
+        ellipseGrad.addColorStop(1,    nb.colorB);
+        ctx.fillStyle = ellipseGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+
     // ── Planets ────────────────────────────────────────────────────
     for (const chunk of chunks) {
       for (const planet of chunk.planets) {
@@ -1488,44 +1550,88 @@ export class World {
     this.station.draw(ctx);
 
     // ── Resource pickups ───────────────────────────────────────────
-    const now = Date.now();
+    const now     = Date.now();
+    const nowSec  = now * 0.001;
     for (const p of this.pickups) {
       const fade  = Math.min(1, p.lifetime / 3); // fade out last 3 s
-      const pulse = 0.65 + Math.sin(now / 300) * 0.25;
+      const spin  = nowSec * 1.8 + (p.pos.x + p.pos.y) * 0.02; // per-pickup phase offset
+      const pulse = 0.72 + Math.sin(nowSec * 3.0 + p.pos.x * 0.01) * 0.18;
       const props = MATERIAL_PROPS[p.material];
+      const S     = 5.5; // half-size of the diamond
       ctx.save();
       ctx.globalAlpha = fade * pulse;
+      // Soft outer halo
       ctx.shadowColor = props.color;
+      ctx.shadowBlur  = 14;
+      ctx.strokeStyle = props.color;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, S * 1.9, 0, Math.PI * 2);
+      ctx.stroke();
+      // Rotating diamond core
+      ctx.translate(p.pos.x, p.pos.y);
+      ctx.rotate(spin);
+      ctx.fillStyle   = props.color;
       ctx.shadowBlur  = 8;
-      ctx.fillStyle = props.color;
-      ctx.fillRect(p.pos.x - 5, p.pos.y - 5, 10, 10);
-      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(0,  -S);
+      ctx.lineTo(S,   0);
+      ctx.lineTo(0,   S);
+      ctx.lineTo(-S,  0);
+      ctx.closePath();
+      ctx.fill();
+      // Bright inner highlight
+      ctx.shadowBlur  = 0;
+      ctx.fillStyle   = 'rgba(255,255,255,0.55)';
+      const h = S * 0.35;
+      ctx.beginPath();
+      ctx.moveTo(0, -h);
+      ctx.lineTo(h,  0);
+      ctx.lineTo(0,  h);
+      ctx.lineTo(-h, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      // Label
+      ctx.save();
       ctx.globalAlpha = fade * 0.85;
-      ctx.fillStyle = props.color;
-      ctx.font = '9px Courier New';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 9);
+      ctx.fillStyle   = props.color;
+      ctx.font        = '9px Courier New';
+      ctx.textAlign   = 'center';
+      ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 12);
       ctx.restore();
     }
 
     // ── Health pickups ─────────────────────────────────────────────
     for (const h of this.healthPickups) {
       const fade  = Math.min(1, h.lifetime / 3);
-      const pulse = 0.7 + Math.sin(now / 250) * 0.3;
+      const pulse = 0.72 + Math.sin(nowSec * 4.0 + h.pos.x * 0.01) * 0.22;
       ctx.save();
       ctx.globalAlpha = fade * pulse;
-      ctx.shadowColor = '#ff4455';
-      ctx.shadowBlur  = 10;
-      ctx.fillStyle   = '#ff4455';
-      // Draw a red cross / plus symbol
+      // Outer glow ring
+      ctx.shadowColor = '#ff5566';
+      ctx.shadowBlur  = 16;
+      ctx.strokeStyle = '#ff5566';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.arc(h.pos.x, h.pos.y, 9, 0, Math.PI * 2);
+      ctx.stroke();
+      // Cross symbol
+      ctx.fillStyle  = '#ff4455';
+      ctx.shadowBlur = 10;
       ctx.fillRect(h.pos.x - 6, h.pos.y - 2, 12, 4); // horizontal bar
       ctx.fillRect(h.pos.x - 2, h.pos.y - 6, 4, 12); // vertical bar
-      ctx.shadowBlur  = 0;
+      // Bright cross center
+      ctx.shadowBlur = 0;
+      ctx.fillStyle  = 'rgba(255,200,200,0.7)';
+      ctx.fillRect(h.pos.x - 2, h.pos.y - 2, 4, 4);
+      ctx.restore();
+      ctx.save();
       ctx.globalAlpha = fade * 0.85;
       ctx.fillStyle   = '#ffaaaa';
       ctx.font        = '9px Courier New';
       ctx.textAlign   = 'center';
-      ctx.fillText(`+${h.amount} HP`, h.pos.x, h.pos.y - 11);
+      ctx.fillText(`+${h.amount} HP`, h.pos.x, h.pos.y - 14);
       ctx.restore();
     }
 
@@ -1594,6 +1700,36 @@ export class World {
     }
     for (const d of this.drones) if (d.alive) check(d.pos);
     return best;
+  }
+
+  /**
+   * Apply a graviton shockwave centred at `pos`, repelling all enemies within
+   * `radiusWorld` with impulse proportional to proximity.
+   * Returns the number of enemies affected.
+   */
+  applyGravitonPulse(pos: Vec2, radiusWorld: number, pushForce: number): number {
+    let affected = 0;
+    const r2 = radiusWorld * radiusWorld;
+    const applyImpulse = (ePos: Vec2, eVel: Vec2): void => {
+      const dx = ePos.x - pos.x;
+      const dy = ePos.y - pos.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= r2 || d2 < 0.01) return;
+      const d   = Math.sqrt(d2);
+      const str = pushForce * (1 - d / radiusWorld) / d;
+      eVel.x += dx * str;
+      eVel.y += dy * str;
+      affected++;
+    };
+    const chunks = this._cachedChunks;
+    for (const chunk of chunks) {
+      for (const e  of chunk.enemies)      if (e.alive)  { applyImpulse(e.pos,  e.vel);  }
+      for (const ic of chunk.interceptors) if (ic.alive) { applyImpulse(ic.pos, ic.vel); }
+      for (const gs of chunk.gunships)     if (gs.alive) { applyImpulse(gs.pos, gs.vel); }
+      for (const bm of chunk.bombers)      if (bm.alive) { applyImpulse(bm.pos, bm.vel); }
+    }
+    for (const d of this.drones) if (d.alive) { applyImpulse(d.pos, d.vel); }
+    return affected;
   }
 
   /** Returns per-module occluder quads for all active shadow-casting entities. */

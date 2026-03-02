@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 46;
+const BUILD_NUMBER = 49;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -1814,8 +1814,8 @@ class Game {
       canvas.width * 0.5, canvas.height * 0.5, 0,
       canvas.width * 0.5, canvas.height * 0.5, Math.max(canvas.width, canvas.height) * 0.75,
     );
-    bgGrad.addColorStop(0,   '#0b0e1a');
-    bgGrad.addColorStop(0.5, '#070b14');
+    bgGrad.addColorStop(0,   '#0d1022');
+    bgGrad.addColorStop(0.5, '#080c18');
     bgGrad.addColorStop(1,   '#03050d');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2075,12 +2075,17 @@ class Game {
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(255,255,255,0.65)';
       ctx.fillText('— ENTERING NEW ZONE —', cx, cy - 30);
-      // Zone name (shadow + colored)
-      ctx.font      = 'bold 42px Courier New';
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillText(this._zoneBannerText, cx + 2, cy + 18);
-      ctx.fillStyle = this._zoneBannerColor;
+      // Zone name — glowing text
+      ctx.font        = 'bold 42px Courier New';
+      ctx.shadowColor = this._zoneBannerColor;
+      ctx.shadowBlur  = 24;
+      ctx.fillStyle   = this._zoneBannerColor;
       ctx.fillText(this._zoneBannerText, cx, cy + 16);
+      // Second pass for brightness
+      ctx.shadowBlur  = 8;
+      ctx.fillStyle   = 'rgba(255,255,255,0.55)';
+      ctx.fillText(this._zoneBannerText, cx, cy + 16);
+      ctx.shadowBlur  = 0;
       ctx.restore();
     }
 
@@ -2211,12 +2216,29 @@ class Game {
 
     ctx.save();
 
-    // Background + border
+    // Background + border with subtle inner glow
     ctx.fillStyle   = 'rgba(0, 5, 12, 0.70)';
-    ctx.strokeStyle = 'rgba(80, 200, 255, 0.35)';
-    ctx.lineWidth   = 1;
     ctx.fillRect(mx, my, SIZE, SIZE);
+    // Outer border
+    ctx.strokeStyle = 'rgba(80, 200, 255, 0.45)';
+    ctx.lineWidth   = 1;
     ctx.strokeRect(mx, my, SIZE, SIZE);
+    // Corner tick marks for a tactical HUD feel
+    const tickLen = 6;
+    ctx.strokeStyle = 'rgba(120, 220, 255, 0.7)';
+    ctx.lineWidth   = 1.5;
+    for (const [cx2, cy2, signX, signY] of [
+      [mx,        my,        1,  1],
+      [mx + SIZE, my,       -1,  1],
+      [mx,        my + SIZE, 1, -1],
+      [mx + SIZE, my + SIZE,-1, -1],
+    ] as [number, number, number, number][]) {
+      ctx.beginPath();
+      ctx.moveTo(cx2 + signX * tickLen, cy2);
+      ctx.lineTo(cx2, cy2);
+      ctx.lineTo(cx2, cy2 + signY * tickLen);
+      ctx.stroke();
+    }
 
     // Clip to minimap bounds
     ctx.beginPath();

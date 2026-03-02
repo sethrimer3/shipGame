@@ -67,6 +67,23 @@ export class Drone {
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
 
+    // Engine exhaust trail
+    if (d > 40 && Math.random() < 35 * dt) {
+      particles.push({
+        pos:      { x: this.pos.x, y: this.pos.y },
+        vel:      {
+          x: -Math.cos(this.angle) * (30 + Math.random() * 30) + (Math.random() - 0.5) * 15,
+          y: -Math.sin(this.angle) * (30 + Math.random() * 30) + (Math.random() - 0.5) * 15,
+        },
+        color:    '#7fd9ff',
+        radius:   1 + Math.random() * 1.2,
+        lifetime: 0.18,
+        maxLife:  0.18,
+        alpha:    1,
+        glow:     true,
+      });
+    }
+
     // Fire at player when close enough
     this.fireCooldown -= dt;
     if (d < 520 && this.fireCooldown <= 0) {

@@ -395,6 +395,24 @@ export class Enemy {
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
 
+    // Engine exhaust trail while actively chasing or attacking
+    if ((this.state === 'chase' || this.state === 'attack') && Math.random() < 25 * dt) {
+      const B = this._blockSize;
+      particles.push({
+        pos:      { x: this.pos.x - Math.cos(this.angle) * B * 2, y: this.pos.y - Math.sin(this.angle) * B * 2 },
+        vel:      {
+          x: -Math.cos(this.angle) * (35 + Math.random() * 25) + (Math.random() - 0.5) * 18,
+          y: -Math.sin(this.angle) * (35 + Math.random() * 25) + (Math.random() - 0.5) * 18,
+        },
+        color:    '#7fd9ff',
+        radius:   1 + Math.random() * 1.2,
+        lifetime: 0.22,
+        maxLife:  0.22,
+        alpha:    1,
+        glow:     true,
+      });
+    }
+
     // ── Shooting ───────────────────────────────────────────────────
     this.fireCooldown -= dt;
     if (this.state === 'attack' && this.fireCooldown <= 0) {
@@ -515,6 +533,10 @@ export class Enemy {
       const x = m.col * B - B / 2;
       const y = m.row * B - B / 2;
 
+      if (m.isCore) {
+        ctx.shadowColor = m.baseColor;
+        ctx.shadowBlur  = 10;
+      }
       ctx.fillStyle = m.baseColor;
       ctx.fillRect(x, y, B, B);
 
@@ -524,6 +546,7 @@ export class Enemy {
         ctx.fillStyle = `rgba(0,0,0,${damageRatio * 0.7})`;
         ctx.fillRect(x, y, B, B);
       }
+      if (m.isCore) ctx.shadowBlur = 0;
 
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
       ctx.lineWidth   = 0.5;

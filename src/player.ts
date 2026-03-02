@@ -1146,6 +1146,30 @@ export class Player {
       ctx.stroke();
       ctx.shadowBlur  = 0;
     }
+
+    // Low-HP warning aura — pulsing red glow around the ship when core is critical
+    if (this.maxCoreHp > 0 && this.coreHp / this.maxCoreHp < 0.45) {
+      const coreRatio = this.coreHp / this.maxCoreHp;
+      // Pulse faster as HP approaches zero
+      const pulseFrequencyHz = 1.5 + (1 - coreRatio) * 4;
+      const pulse    = 0.5 + Math.abs(Math.sin(Date.now() * 0.001 * Math.PI * pulseFrequencyHz)) * 0.5;
+      const alpha    = (1 - coreRatio / 0.45) * 0.55 * pulse;
+      const outerRadiusMult = 2.8;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const grad = ctx.createRadialGradient(
+        this.pos.x, this.pos.y, SHIP_RADIUS * 0.5,
+        this.pos.x, this.pos.y, SHIP_RADIUS * outerRadiusMult,
+      );
+      grad.addColorStop(0,   `rgba(255,40,40,${alpha.toFixed(3)})`);
+      grad.addColorStop(0.6, `rgba(200,20,20,${(alpha * 0.4).toFixed(3)})`);
+      grad.addColorStop(1,   'rgba(180,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y, SHIP_RADIUS * outerRadiusMult, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   private _buildShipBlocks(): Array<{ col: number; row: number; color: string; hpRatio: number }> {

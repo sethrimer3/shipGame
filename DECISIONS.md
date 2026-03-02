@@ -1,5 +1,72 @@
 # DECISIONS
 
+## 2026-03-02 — Visual polish pass (Build 49)
+
+### Floating module ember glow (`src/world.ts`)
+- Freshly detached enemy ship modules now glow orange (additive `#ff7700` with `shadowBlur = 8`) when `hpRatio > 0.35`. The glow fades linearly as the fragment cools/dies, giving a visceral sense of hot wreckage spinning through space.
+
+### Gunship engine exhaust (`src/gunship.ts`)
+- Gunships now emit a per-frame cyan engine exhaust trail from the rear engine module position (col=-1), matching the aesthetic already established for drones and interceptors in Build 48. Trail particles are `glow: true` for additive blending.
+
+### Enemy base-class engine exhaust (`src/enemy.ts`)
+- All base `Enemy` ships (Scout → Capital Ship) now emit a glowing cyan exhaust trail while in `chase` or `attack` state. Particles spawn from 2 block-lengths behind the nose, giving each pursuing enemy a visible engine wake that makes combat more dynamic.
+
+### Mothership weapon module pulsing glow (`src/mothership.ts`)
+- Laser modules (`#ff2222`), rocket modules (`#ff8800`), and drone bay modules (`#22dd44`) now render a per-module pulsing `lighter`-composite glow each frame. The pulse frequency and phase offset varies per module column/row, giving motherships a menacing armed appearance with visible weapon "heartbeats".
+
+### Minimap tactical corner ticks (`src/game.ts`)
+- The minimap border now has L-shaped corner tick marks (6px, `rgba(120,220,255,0.7)`, 1.5px line) at all four corners, styled as a tactical HUD display. The main border opacity was also raised slightly (0.35→0.45) for better visibility.
+
+## 2026-03-02 — Visual polish pass (Build 48)
+
+### Interceptor engine trail glow + charging aura (`src/interceptor.ts`)
+- Exhaust trail particles now carry `glow: true` for vivid additive blending (consistent with Build 47 particle glow system).
+- When `_isTargetingPlayer` is true, a semi-transparent `lighter`-blended radial fill at radius 14 is drawn around the interceptor in its tier colour before the body, giving a threatening red charging-up effect. The body shape itself also gets `shadowBlur = 10` while charging.
+
+### Drone engine exhaust (`src/drone.ts`)
+- Added a per-frame engine exhaust trail to the drone (cyan `#7fd9ff`, mirroring its engine module colour, `glow: true`). Previously drones had no engine FX; they now leave a glowing blue wake consistent with other ships.
+
+### Player low-HP critical aura (`src/player.ts`)
+- When `coreHp / maxCoreHp < 0.45`, a pulsing radial red glow is drawn around the player ship using `globalCompositeOperation = 'lighter'`.
+- Pulse frequency increases as HP approaches zero (1.5 → 5.5 Hz). Gradient fades from red centre out to transparent at 2.8× ship radius.
+- Gives the player a visceral "danger" feel when their core is about to fail, distinct from the edge-vignette danger indicator (which is enemy proximity, not ship HP).
+
+### Placed block bevel highlight (`src/world.ts`)
+- Placed blocks in the world now draw the same top-left L-stroke bevel (`rgba(255,255,255,0.22)`) that asteroid blocks received in Build 47. This makes player-constructed structures visually consistent with the environment.
+
+### Zone transition banner glow (`src/game.ts`)
+- Replaced the 2-pass drop-shadow zone name with a two-pass glow: first pass draws the zone name with `shadowColor = bannerColor; shadowBlur = 24`, second pass draws a bright white overlay at `shadowBlur = 8` for a neon bloom. Gives the zone name a vivid cinematic pop.
+
+### Asteroid turret muzzle glow (`src/asteroid.ts`)
+- The turret barrel tip (rightmost 3px rect) is now tinted `#ff8800` with `shadowColor = #ff6600; shadowBlur = 8`, giving each mounted turret a visible hot-muzzle orange glow that makes them easier to spot before they fire.
+
+## 2026-03-02 — Visual polish pass (Build 47)
+
+### Richer nebula palette (`src/world.ts`)
+- Expanded nebula colour palette from 6 to 8 distinct hues (deep violet, cobalt blue, rose, teal, purple, amber-orange, bright blue, alien green).
+- Raised inner-cloud opacity from 0.14–0.18 to 0.22–0.30 so nebulas are clearly visible as atmospheric space colour against the dark background.
+- Slightly enlarged nebula blobs: `radiusA` range increased from 280–700 to 320–800, `radiusB` from 180–500 to 200–560. Both changes make the colourful space atmosphere more pronounced without adding runtime cost.
+
+### Glowing explosion particles (`src/particle.ts`)
+- Added optional `glow?: boolean` field to the `Particle` interface.
+- When `glow` is `true`, `drawParticle()` draws the particle using `globalCompositeOperation = 'lighter'` inside a save/restore block, making overlapping explosion sparks additively brighten (natural glow without `shadowBlur`).
+- `makeExplosion()` now sets `glow: true` on all generated particles, giving every explosion a vivid luminous burst effect. Cost is bounded to explosion events (22 particles maximum per large detonation).
+
+### Floating damage text glow (`src/particle.ts`)
+- `drawFloatingText()` now sets `ctx.shadowColor = f.color` and `ctx.shadowBlur = 7` before rendering each floating number, replacing the old 1-pixel drop-shadow trick.
+- The glow colour matches the text colour (yellow for XP, orange for crits, etc.) so combat feedback is immediately readable. Shadow is reset to 0 after each draw to avoid state leakage.
+
+### Block top-left bevel highlight (`src/block.ts`)
+- Each block now draws a two-segment white stroke (top edge + left edge) at `rgba(255,255,255,0.22)` after the damage overlay, giving asteroid and placed blocks a subtle bevelled 3D appearance.
+- The grid outline stroke still draws on top to preserve the dark grid seam. Total extra cost: 2 line draws per visible block per frame.
+
+### Enemy core module glow (`src/enemy.ts`)
+- The core module of each enemy ship is now rendered with `ctx.shadowColor = m.baseColor; ctx.shadowBlur = 10`, giving it a coloured glow that matches the enemy tier colour.
+- This makes the core (the kill target) visually distinct from non-core modules, improving target readability without altering gameplay.
+
+### Background gradient enhancement (`src/game.ts`)
+- Shifted the radial centre stop from `#0b0e1a` to `#0d1022` (slightly more blue-purple) and mid stop from `#070b14` to `#080c18`, giving the deep space background a richer feel.
+
 ## 2026-03-02 — Visual polish pass (Build 46)
 
 ### Space background radial gradient (`src/game.ts`)

@@ -40,6 +40,15 @@ export class Block {
       ctx.fillRect(x, y, BLOCK_SIZE, BLOCK_SIZE);
     }
 
+    // Top-left bevel highlight for subtle 3D depth
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + BLOCK_SIZE, y);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + BLOCK_SIZE);
+    ctx.stroke();
+
     // Grid outline
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth   = 1;

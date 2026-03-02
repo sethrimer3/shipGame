@@ -25,3 +25,9 @@
 - [ ] Buy a Hull Regen level and rebirth; confirm damaged hull slowly regenerates HP between fights.
 - [ ] Buy an Engine Overdrive level and rebirth; confirm ship reaches a higher top speed.
 - [ ] Travel to 2000+ world-unit distance and kill enemies; verify occasional gem pickups appear (small chance).
+
+- [ ] Hit an enemy multiple times and watch for an orange "-N CRIT!" floating text (~15% chance per shot).
+- [ ] Craft a Cluster Bomb (4× Iron + 2× Gold + 3× Rock), equip it, and confirm 5 projectiles fire in a wide 120° arc.
+- [ ] Press E while shield is depleted and overheat is ≥35 units; confirm shield restores and a HUD message appears.
+- [ ] Press E when shield is already full; confirm "Shield already full" message appears.
+- [ ] Press E when overheat is < 35 units; confirm "Not enough energy" message appears.

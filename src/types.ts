@@ -171,12 +171,14 @@ export type ShipModuleType =
   | 'resonance_beam'
   | 'placer_laser'
   | 'spread_cannon'
-  | 'missile_launcher';
+  | 'missile_launcher'
+  | 'cluster_bomb';
 
 export const SHIP_MODULE_TYPES: ShipModuleType[] = [
   'hull', 'engine', 'shield', 'coolant', 'weapon', 'miningLaser',
   'basic_cannon', 'laser_beam', 'shield_gen', 'heavy_armor', 'dark_engine', 'mining_laser',
   'void_lance', 'resonance_beam', 'placer_laser', 'spread_cannon', 'missile_launcher',
+  'cluster_bomb',
 ];
 
 export const SHIP_MODULE_FAMILY_BY_TYPE: Record<ShipModuleType, ShipModuleFamily> = {
@@ -197,6 +199,7 @@ export const SHIP_MODULE_FAMILY_BY_TYPE: Record<ShipModuleType, ShipModuleFamily
   placer_laser: 'coolant',
   spread_cannon: 'weapon',
   missile_launcher: 'weapon',
+  cluster_bomb: 'weapon',
 };
 
 export interface ShipModules {
@@ -259,6 +262,7 @@ export const MODULE_UPGRADE_BASE_COST: Record<ShipModuleType, number> = {
   placer_laser: 3,
   spread_cannon: 6,
   missile_launcher: 6,
+  cluster_bomb: 6,
 };
 
 // ── Crafting recipes ──────────────────────────────────────────────────────────
@@ -387,6 +391,16 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     outputQty:   1,
     moduleType:  'missile_launcher',
   },
+  {
+    id:          'cluster_bomb',
+    name:        'Cluster Bomb',
+    description: 'Fires 5 projectiles in a 120° arc. Shreds groups of enemies.',
+    icon:        '💣',
+    inputs:      [{ material: Material.Iron, quantity: 4 }, { material: Material.Gold, quantity: 2 }, { material: Material.Rock, quantity: 3 }],
+    outputId:    'cluster_bomb',
+    outputQty:   1,
+    moduleType:  'cluster_bomb',
+  },
 ];
 
 export interface ToolbarItemDef {
@@ -403,6 +417,8 @@ export interface ToolbarItemDef {
   projectileRadius: number;
   /** If > 1, fires this many projectiles in a spread arc. */
   spreadShots?: number;
+  /** Total arc angle in radians for spread shots (default π/9 ≈ 20°). */
+  spreadArcRad?: number;
   /** If true, fired projectile homes toward the mouse cursor. */
   isHoming?: boolean;
 }
@@ -462,6 +478,11 @@ export const TOOLBAR_ITEM_DEFS: Record<string, ToolbarItemDef> = {
     id: 'missile_launcher', name: 'Missile', icon: '🚀', color: '#ff8800',
     type: 'weapon', damage: 42, fireRate: 0.65, projectileSpeed: 300,
     projectileColor: '#ff8800', projectileRadius: 5, isHoming: true,
+  },
+  cluster_bomb: {
+    id: 'cluster_bomb', name: 'Cluster Bomb', icon: '💣', color: '#c0a030',
+    type: 'weapon', damage: 22, fireRate: 0.7, projectileSpeed: 400,
+    projectileColor: '#ffcc44', projectileRadius: 6, spreadShots: 5, spreadArcRad: Math.PI * 2 / 3,
   },
 };
 

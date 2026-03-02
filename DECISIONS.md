@@ -169,3 +169,22 @@
 - Enemies killed at distance ≥ 2000 wu have a small chance of dropping a gem pickup in addition to normal material loot.
 - Drop rate scales with zone depth: 3% at 2000 wu, 6% at 5000 wu, 12% at 10 000 wu.
 - Gem type is drawn from `pickGem(dropDist)` so rarity scales naturally with world distance.
+
+## 2026-03-02 — Critical hits + Cluster Bomb weapon + Emergency Shield Boost
+
+### Critical hit system (`src/world.ts`)
+- Player projectiles have a 15% (`PLAYER_CRIT_CHANCE`) chance to deal 2× damage on hit.
+- Critical hits show an orange `-N CRIT!` floating text instead of the normal yellow `-N` text, giving clear feedback.
+- Crits do not apply to `StationBeam` projectiles (which have separate sapphire-armour logic).
+
+### New craftable weapon: Cluster Bomb (`src/types.ts`, `src/game.ts`)
+- New `ShipModuleType` `'cluster_bomb'` added, in the `'weapon'` family.
+- Recipe: 4× Iron + 2× Gold + 3× Rock. Fires **5 projectiles in a 120° arc** (`spreadArcRad: Math.PI * 2 / 3`).
+- `spreadArcRad` optional field added to `ToolbarItemDef` so each weapon can declare its own spread angle (default 20° if omitted).
+- Player firing code in `player.ts` reads `weapon.spreadArcRad ?? (Math.PI / 9)` instead of the old hard-coded constant.
+
+### Emergency Shield Boost – E key (`src/player.ts`, `src/game.ts`)
+- Press **E** to instantly convert 35 units of overheat energy into up to 40 shield points.
+- Implemented via `player.tryEmergencyShieldBoost(shieldAmt, overheatCost)` – returns 0 if shield is full or overheat is insufficient.
+- Shows HUD feedback message and a small camera shake on activation.
+- `_shieldBoostKeyHeld` flag prevents repeat-fire from a held key.

@@ -93,6 +93,8 @@ const PICKUP_HALF_SIZE      = 5;    // half-side of pickup draw rect (world unit
 
 const HEALTH_DROP_CHANCE        = 0.15; // probability of a health pack dropping on enemy kill
 const HEALTH_DROP_XP_MULTIPLIER = 0.3;  // heal amount = 10 + xpValue * this
+/** Probability that a player projectile deals a critical hit (2× damage). */
+const PLAYER_CRIT_CHANCE = 0.15;
 
 // ── Loose planet particle (water/sand ejected from a planet surface) ──────────
 interface LoosePlanetParticle {
@@ -682,7 +684,9 @@ export class World {
           if (this._hitProjectileVsCircle(proj, enemy.pos, enemy.radius)) {
             proj.alive = false;
             const isSapphireArmoredTarget = enemy.tier.minDist >= STATION_TURRET_SAPPHIRE_ARMOR_DIST_WORLD;
-            const appliedDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const isCrit = !proj.isStationBeam && Math.random() < PLAYER_CRIT_CHANCE;
+            const baseDamage = proj.isStationBeam && isSapphireArmoredTarget ? 0 : proj.damage;
+            const appliedDamage = isCrit ? baseDamage * 2 : baseDamage;
             const result = enemy.damageAt(proj.pos, appliedDamage, particles, Math.random);
             // Alert the enemy: player hit it, so it should start chasing
             if (!result.killed) enemy.alertedByPlayer();
@@ -692,8 +696,8 @@ export class World {
             }
             floatingTexts.push(makeFloatingText(
               { x: enemy.pos.x, y: enemy.pos.y - enemy.radius },
-              `-${appliedDamage}`,
-              '#ffcc44',
+              isCrit ? `-${appliedDamage} CRIT!` : `-${appliedDamage}`,
+              isCrit ? '#ff6600' : '#ffcc44',
             ));
             if (result.killed) {
               this.kills++;

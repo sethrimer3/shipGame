@@ -52,6 +52,7 @@ const MODULE_EDITOR_CONFIG: ModuleEditorConfig[] = [
   { type: 'resonance_beam',   name: 'Resonance Beam',   desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
   { type: 'spread_cannon',    name: 'Spread Cannon',    desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
   { type: 'missile_launcher', name: 'Missile Launcher', desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
+  { type: 'cluster_bomb',     name: 'Cluster Bomb',     desc: 'Weapon module: +damage/+fire rate.', color: '#ff4444' },
   { type: 'mining_laser',     name: 'Mining Laser',     desc: 'Adds a front-facing mining laser beam.', color: '#7ed6f3' },
   { type: 'shield_gen',       name: 'Shield Generator', desc: 'Shield-family module.', color: '#9f8cff' },
   { type: 'heavy_armor',      name: 'Heavy Armor',      desc: 'Hull-family module.', color: '#2ecc71' },
@@ -124,6 +125,7 @@ const MODULE_TOOLTIP_DESCS: Record<ShipModuleType, string> = {
   placer_laser: 'Coolant-family module from Placer Laser.',
   spread_cannon: 'Weapon-family module from Spread Cannon.',
   missile_launcher: 'Weapon-family module from Missile Launcher.',
+  cluster_bomb: 'Weapon-family module from Cluster Bomb.',
 };
 const MODULE_CORE_DESC = 'Ship core. Nanobots: heals nearest modules at 10 HP/s outward.';
 const TOOLTIP_CURSOR_OFFSET = 14; // pixels from cursor to tooltip edge
@@ -131,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 41;
+const BUILD_NUMBER = 42;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -174,6 +176,7 @@ const STARTING_MODULE_RESOURCE_COUNTS: Record<ShipModuleType, number> = {
   placer_laser: 0,
   spread_cannon: 0,
   missile_launcher: 0,
+  cluster_bomb: 0,
 };
 
 class Game {
@@ -265,6 +268,13 @@ class Game {
   private _killComboPrevKills = 0;
   /** Maximum seconds between kills to continue a combo streak. */
   private static readonly _COMBO_WINDOW_SEC = 4.0;
+
+  // ── Emergency shield boost (E key) ──────────────────────────────────────────
+  private _shieldBoostKeyHeld = false;
+  /** Overheat units consumed per shield boost activation. */
+  private static readonly _SHIELD_BOOST_OVERHEAT_COST = 35;
+  /** Shield points restored per boost activation. */
+  private static readonly _SHIELD_BOOST_RESTORE_AMT   = 40;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -543,6 +553,24 @@ class Game {
     if (!this.input.isDown('u')) this._upgradeKeyHeld = false;
 
     if (this._settingsOpen || this._shipEditorOpen || this.crafting.isOpen()) return;
+
+    // ── Emergency shield boost (E key) ─────────────────────────────
+    if (this.input.isDown('e') && !this._shieldBoostKeyHeld) {
+      this._shieldBoostKeyHeld = true;
+      const healed = this.player.tryEmergencyShieldBoost(
+        Game._SHIELD_BOOST_RESTORE_AMT,
+        Game._SHIELD_BOOST_OVERHEAT_COST,
+      );
+      if (healed > 0) {
+        this.hud.showMessage(`⚡ Emergency Shield +${healed}!`, 1.5);
+        this.camera.shake(1.2);
+      } else if (this.player.shield >= this.player.maxShield) {
+        this.hud.showMessage('Shield already full', 1);
+      } else {
+        this.hud.showMessage('Not enough energy — charge overheat first', 1.5);
+      }
+    }
+    if (!this.input.isDown('e')) this._shieldBoostKeyHeld = false;
 
     // ── Toolbar navigation ──────────────────────────────────────────
     const scroll = this.input.consumeScroll();
@@ -1248,7 +1276,7 @@ class Game {
         hull: 'H', engine: 'E', shield: 'S', coolant: 'C', weapon: 'W', miningLaser: 'ML',
         basic_cannon: 'BC', laser_beam: 'LB', shield_gen: 'SG', heavy_armor: 'HA', dark_engine: 'DE',
         mining_laser: 'ML', void_lance: 'VL', resonance_beam: 'RB', placer_laser: 'PL',
-        spread_cannon: 'SC', missile_launcher: 'MS',
+        spread_cannon: 'SC', missile_launcher: 'MS', cluster_bomb: 'CB',
       };
       htmlCell.textContent = MODULE_LABELS[moduleType] ?? moduleType[0].toUpperCase();
       htmlCell.draggable = true;

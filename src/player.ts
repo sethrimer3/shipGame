@@ -479,6 +479,20 @@ export class Player {
     return this.inventory.get(mat)?.quantity ?? 0;
   }
 
+  /**
+   * Attempt to consume overheat energy to instantly restore shield.
+   * Returns the amount of shield actually restored (0 if not enough energy or shield full).
+   */
+  tryEmergencyShieldBoost(shieldRestoreAmt: number, overheatCost: number): number {
+    if (this.overheatMeter < overheatCost) return 0;
+    const healed = Math.min(shieldRestoreAmt, this.maxShield - this.shield);
+    if (healed <= 0) return 0;
+    this.overheatMeter -= overheatCost;
+    this.shield += healed;
+    this.shieldRegenDelay = 0;
+    return healed;
+  }
+
   equipItem(slotIndex: number, item: ToolbarItemDef): void {
     this.equippedItems[slotIndex] = item;
     // Apply passive upgrades immediately
@@ -798,9 +812,9 @@ export class Player {
         ));
       } else {
         const spreadCount = weapon.spreadShots ?? 1;
-        const SPREAD_ARC  = Math.PI / 9; // 20° total arc
+        const spreadArc   = weapon.spreadArcRad ?? (Math.PI / 9); // default 20° total arc
         for (let si = 0; si < spreadCount; si++) {
-          const offset = spreadCount > 1 ? (si / (spreadCount - 1) - 0.5) * SPREAD_ARC : 0;
+          const offset = spreadCount > 1 ? (si / (spreadCount - 1) - 0.5) * spreadArc : 0;
           const dir = fromAngle(this.angle + offset);
           projectiles.push(new Projectile(
             this.pos, dir, weapon.projectileSpeed, adjustedDamage,

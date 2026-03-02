@@ -312,12 +312,14 @@ export class World {
     // ── Nebula patches ─────────────────────────────────────────────
     // Sparse coloured clouds; 0–2 per chunk based on RNG
     const nebulaPaletteInner = [
-      'rgba(60,30,120,0.18)', 'rgba(10,80,140,0.16)', 'rgba(120,30,60,0.16)',
-      'rgba(20,100,80,0.14)', 'rgba(90,50,140,0.18)', 'rgba(10,60,130,0.14)',
+      'rgba(80,20,160,0.30)',  'rgba(10,90,200,0.28)',  'rgba(160,20,60,0.26)',
+      'rgba(15,130,100,0.24)', 'rgba(110,20,180,0.30)', 'rgba(200,60,10,0.24)',
+      'rgba(10,80,200,0.28)',  'rgba(80,160,40,0.22)',
     ];
     const nebulaPaletteOuter = [
-      'rgba(60,20,100,0)',    'rgba(8,60,110,0)',      'rgba(100,20,50,0)',
-      'rgba(10,80,60,0)',     'rgba(70,40,120,0)',     'rgba(8,50,110,0)',
+      'rgba(60,10,130,0)',  'rgba(5,70,160,0)',   'rgba(130,10,50,0)',
+      'rgba(10,100,80,0)', 'rgba(90,10,150,0)',  'rgba(170,40,5,0)',
+      'rgba(5,60,160,0)',  'rgba(60,130,30,0)',
     ];
     const shouldSpawnNebula = rng() < 0.65;
     const nebulaCount = shouldSpawnNebula ? (rng() < 0.45 ? 2 : 1) : 0;
@@ -326,8 +328,8 @@ export class World {
       nebulaPatches.push({
         x:       baseX + rng() * CHUNK_SIZE,
         y:       baseY + rng() * CHUNK_SIZE,
-        radiusA: 280 + rng() * 420,
-        radiusB: 180 + rng() * 320,
+        radiusA: 320 + rng() * 480,
+        radiusB: 200 + rng() * 360,
         angle:   rng() * Math.PI,
         colorA:  nebulaPaletteInner[pi],
         colorB:  nebulaPaletteOuter[pi],

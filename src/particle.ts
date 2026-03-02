@@ -34,10 +34,11 @@ export function drawFloatingText(ctx: CanvasRenderingContext2D, f: FloatingText)
   ctx.globalAlpha = alpha;
   ctx.font        = 'bold 13px Courier New';
   ctx.textAlign   = 'center';
-  ctx.fillStyle   = '#000';
-  ctx.fillText(f.text, f.pos.x + 1, f.pos.y + 1);
+  ctx.shadowColor = f.color;
+  ctx.shadowBlur  = 7;
   ctx.fillStyle   = f.color;
   ctx.fillText(f.text, f.pos.x, f.pos.y);
+  ctx.shadowBlur  = 0;
   ctx.restore();
 }
 
@@ -53,6 +54,8 @@ export interface Particle {
   /** When true, a motion-blur trail is drawn from prevPos to pos. */
   trail?:   boolean;
   prevPos?: Vec2;
+  /** When true, drawn with additive (lighter) blending for a glowing effect. */
+  glow?:    boolean;
 }
 
 export function updateParticle(p: Particle, dt: number): void {
@@ -95,6 +98,24 @@ export function drawParticle(ctx: CanvasRenderingContext2D, p: Particle, skipTra
     }
   }
 
+  if (p.glow) {
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = p.color;
+    if (p.shape === 'square') {
+      const s = p.radius * 2;
+      ctx.fillRect(p.pos.x - p.radius, p.pos.y - p.radius, s, s);
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, p.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
   if (p.shape === 'square') {
     const s = p.radius * 2;
     ctx.fillRect(p.pos.x - p.radius, p.pos.y - p.radius, s, s);
@@ -122,6 +143,7 @@ export function makeExplosion(
       lifetime: life,
       maxLife:  life,
       alpha:    1,
+      glow:     true,
     });
   }
   return particles;

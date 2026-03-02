@@ -1,5 +1,32 @@
 # DECISIONS
 
+## 2026-03-02 — Visual polish pass (Build 47)
+
+### Richer nebula palette (`src/world.ts`)
+- Expanded nebula colour palette from 6 to 8 distinct hues (deep violet, cobalt blue, rose, teal, purple, amber-orange, bright blue, alien green).
+- Raised inner-cloud opacity from 0.14–0.18 to 0.22–0.30 so nebulas are clearly visible as atmospheric space colour against the dark background.
+- Slightly enlarged nebula blobs: `radiusA` range increased from 280–700 to 320–800, `radiusB` from 180–500 to 200–560. Both changes make the colourful space atmosphere more pronounced without adding runtime cost.
+
+### Glowing explosion particles (`src/particle.ts`)
+- Added optional `glow?: boolean` field to the `Particle` interface.
+- When `glow` is `true`, `drawParticle()` draws the particle using `globalCompositeOperation = 'lighter'` inside a save/restore block, making overlapping explosion sparks additively brighten (natural glow without `shadowBlur`).
+- `makeExplosion()` now sets `glow: true` on all generated particles, giving every explosion a vivid luminous burst effect. Cost is bounded to explosion events (22 particles maximum per large detonation).
+
+### Floating damage text glow (`src/particle.ts`)
+- `drawFloatingText()` now sets `ctx.shadowColor = f.color` and `ctx.shadowBlur = 7` before rendering each floating number, replacing the old 1-pixel drop-shadow trick.
+- The glow colour matches the text colour (yellow for XP, orange for crits, etc.) so combat feedback is immediately readable. Shadow is reset to 0 after each draw to avoid state leakage.
+
+### Block top-left bevel highlight (`src/block.ts`)
+- Each block now draws a two-segment white stroke (top edge + left edge) at `rgba(255,255,255,0.22)` after the damage overlay, giving asteroid and placed blocks a subtle bevelled 3D appearance.
+- The grid outline stroke still draws on top to preserve the dark grid seam. Total extra cost: 2 line draws per visible block per frame.
+
+### Enemy core module glow (`src/enemy.ts`)
+- The core module of each enemy ship is now rendered with `ctx.shadowColor = m.baseColor; ctx.shadowBlur = 10`, giving it a coloured glow that matches the enemy tier colour.
+- This makes the core (the kill target) visually distinct from non-core modules, improving target readability without altering gameplay.
+
+### Background gradient enhancement (`src/game.ts`)
+- Shifted the radial centre stop from `#0b0e1a` to `#0d1022` (slightly more blue-purple) and mid stop from `#070b14` to `#080c18`, giving the deep space background a richer feel.
+
 ## 2026-03-02 — Visual polish pass (Build 46)
 
 ### Space background radial gradient (`src/game.ts`)

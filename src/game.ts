@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 46;
+const BUILD_NUMBER = 47;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -1814,8 +1814,8 @@ class Game {
       canvas.width * 0.5, canvas.height * 0.5, 0,
       canvas.width * 0.5, canvas.height * 0.5, Math.max(canvas.width, canvas.height) * 0.75,
     );
-    bgGrad.addColorStop(0,   '#0b0e1a');
-    bgGrad.addColorStop(0.5, '#070b14');
+    bgGrad.addColorStop(0,   '#0d1022');
+    bgGrad.addColorStop(0.5, '#080c18');
     bgGrad.addColorStop(1,   '#03050d');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);

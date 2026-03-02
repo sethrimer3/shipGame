@@ -515,6 +515,10 @@ export class Enemy {
       const x = m.col * B - B / 2;
       const y = m.row * B - B / 2;
 
+      if (m.isCore) {
+        ctx.shadowColor = m.baseColor;
+        ctx.shadowBlur  = 10;
+      }
       ctx.fillStyle = m.baseColor;
       ctx.fillRect(x, y, B, B);
 
@@ -524,6 +528,7 @@ export class Enemy {
         ctx.fillStyle = `rgba(0,0,0,${damageRatio * 0.7})`;
         ctx.fillRect(x, y, B, B);
       }
+      if (m.isCore) ctx.shadowBlur = 0;
 
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
       ctx.lineWidth   = 0.5;

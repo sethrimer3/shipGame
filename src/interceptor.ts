@@ -93,6 +93,7 @@ export class Interceptor {
         lifetime: 0.22,
         maxLife:  0.22,
         alpha:    1,
+        glow:     true,
       });
     }
   }
@@ -114,8 +115,24 @@ export class Interceptor {
     ctx.translate(this.pos.x, this.pos.y);
     ctx.rotate(this.angle);
 
+    // Charging red glow when actively targeting the player
+    if (this._isTargetingPlayer) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.shadowColor = this._color;
+      ctx.shadowBlur  = 16;
+      ctx.fillStyle   = `${this._color}55`;
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius * 1.75, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur  = 0;
+      ctx.restore();
+    }
+
     // Sleek pointed diamond shape
     ctx.fillStyle   = this._color;
+    ctx.shadowColor = this._color;
+    ctx.shadowBlur  = this._isTargetingPlayer ? 10 : 0;
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth   = 0.7;
     ctx.beginPath();
@@ -126,6 +143,7 @@ export class Interceptor {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     ctx.restore();
 

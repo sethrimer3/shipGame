@@ -228,9 +228,14 @@ export class AsteroidTurret {
     ctx.fillStyle   = '#666';
     ctx.fillRect(-5, -5, 10, 10);
 
-    // Barrel
+    // Barrel with orange muzzle glow
     ctx.fillStyle   = '#aaa';
     ctx.fillRect(2, -2, 10, 4);
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur  = 8;
+    ctx.fillStyle   = '#ff8800';
+    ctx.fillRect(10, -2, 3, 4);
+    ctx.shadowBlur  = 0;
 
     ctx.restore();
 

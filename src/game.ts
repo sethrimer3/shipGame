@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 47;
+const BUILD_NUMBER = 48;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -2075,12 +2075,17 @@ class Game {
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(255,255,255,0.65)';
       ctx.fillText('— ENTERING NEW ZONE —', cx, cy - 30);
-      // Zone name (shadow + colored)
-      ctx.font      = 'bold 42px Courier New';
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillText(this._zoneBannerText, cx + 2, cy + 18);
-      ctx.fillStyle = this._zoneBannerColor;
+      // Zone name — glowing text
+      ctx.font        = 'bold 42px Courier New';
+      ctx.shadowColor = this._zoneBannerColor;
+      ctx.shadowBlur  = 24;
+      ctx.fillStyle   = this._zoneBannerColor;
       ctx.fillText(this._zoneBannerText, cx, cy + 16);
+      // Second pass for brightness
+      ctx.shadowBlur  = 8;
+      ctx.fillStyle   = 'rgba(255,255,255,0.55)';
+      ctx.fillText(this._zoneBannerText, cx, cy + 16);
+      ctx.shadowBlur  = 0;
       ctx.restore();
     }
 

@@ -1648,6 +1648,14 @@ export class World {
         ctx.fillStyle = `rgba(0,0,0,${ratio * 0.6})`;
         ctx.fillRect(block.pos.x, block.pos.y, BLOCK_SIZE, BLOCK_SIZE);
       }
+      // Top-left bevel highlight (consistent with asteroid blocks)
+      ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(block.pos.x + BLOCK_SIZE, block.pos.y);
+      ctx.lineTo(block.pos.x, block.pos.y);
+      ctx.lineTo(block.pos.x, block.pos.y + BLOCK_SIZE);
+      ctx.stroke();
       ctx.strokeStyle = 'rgba(0,0,0,0.5)';
       ctx.lineWidth   = 1;
       ctx.strokeRect(block.pos.x, block.pos.y, BLOCK_SIZE, BLOCK_SIZE);

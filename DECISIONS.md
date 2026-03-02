@@ -1,5 +1,28 @@
 # DECISIONS
 
+## 2026-03-02 — Visual polish pass (Build 48)
+
+### Interceptor engine trail glow + charging aura (`src/interceptor.ts`)
+- Exhaust trail particles now carry `glow: true` for vivid additive blending (consistent with Build 47 particle glow system).
+- When `_isTargetingPlayer` is true, a semi-transparent `lighter`-blended radial fill at radius 14 is drawn around the interceptor in its tier colour before the body, giving a threatening red charging-up effect. The body shape itself also gets `shadowBlur = 10` while charging.
+
+### Drone engine exhaust (`src/drone.ts`)
+- Added a per-frame engine exhaust trail to the drone (cyan `#7fd9ff`, mirroring its engine module colour, `glow: true`). Previously drones had no engine FX; they now leave a glowing blue wake consistent with other ships.
+
+### Player low-HP critical aura (`src/player.ts`)
+- When `coreHp / maxCoreHp < 0.45`, a pulsing radial red glow is drawn around the player ship using `globalCompositeOperation = 'lighter'`.
+- Pulse frequency increases as HP approaches zero (1.5 → 5.5 Hz). Gradient fades from red centre out to transparent at 2.8× ship radius.
+- Gives the player a visceral "danger" feel when their core is about to fail, distinct from the edge-vignette danger indicator (which is enemy proximity, not ship HP).
+
+### Placed block bevel highlight (`src/world.ts`)
+- Placed blocks in the world now draw the same top-left L-stroke bevel (`rgba(255,255,255,0.22)`) that asteroid blocks received in Build 47. This makes player-constructed structures visually consistent with the environment.
+
+### Zone transition banner glow (`src/game.ts`)
+- Replaced the 2-pass drop-shadow zone name with a two-pass glow: first pass draws the zone name with `shadowColor = bannerColor; shadowBlur = 24`, second pass draws a bright white overlay at `shadowBlur = 8` for a neon bloom. Gives the zone name a vivid cinematic pop.
+
+### Asteroid turret muzzle glow (`src/asteroid.ts`)
+- The turret barrel tip (rightmost 3px rect) is now tinted `#ff8800` with `shadowColor = #ff6600; shadowBlur = 8`, giving each mounted turret a visible hot-muzzle orange glow that makes them easier to spot before they fire.
+
 ## 2026-03-02 — Visual polish pass (Build 47)
 
 ### Richer nebula palette (`src/world.ts`)

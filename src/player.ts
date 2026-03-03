@@ -1061,6 +1061,7 @@ export class Player {
   draw(ctx: CanvasRenderingContext2D): void {
     const thrusting = this.input.isDown('w') || this.input.isDown('s') ||
                       this.input.isDown('a') || this.input.isDown('d');
+    const nowMs = Date.now();
 
     ctx.save();
     ctx.translate(this.pos.x, this.pos.y);
@@ -1100,23 +1101,47 @@ export class Player {
     // Engine exhaust flame — multi-layer glow
     if (thrusting) {
       const engineModuleCount = Math.max(1, this.modules.engine);
-      // Outer wide glow cone
+      const boostActive = this.thrustMultiplier > 1;
+      const flamePulse = 0.88 + 0.12 * Math.sin(nowMs * 0.018);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.shadowColor = '#4af';
-      ctx.shadowBlur  = 22;
-      ctx.fillStyle   = 'rgba(30, 130, 255, 0.30)';
-      const w1 = B * 1.8 + engineModuleCount * 2;
-      ctx.fillRect(-3 * B - B * 0.3, -B * 0.6, w1, B * 1.2);
+
+      // Widest outer glow cone (diffuse ambient)
+      ctx.shadowBlur  = 28;
+      ctx.shadowColor = boostActive ? '#c87aff' : '#2af';
+      const w0 = B * 2.5 + engineModuleCount * 3;
+      ctx.fillStyle   = boostActive ? `rgba(160,60,255,${0.18 * flamePulse})` : `rgba(20,100,240,${0.22 * flamePulse})`;
+      ctx.fillRect(-3 * B - B * 0.7, -B * 0.75, w0, B * 1.5);
+
+      // Outer wide glow cone
+      ctx.shadowBlur  = 20;
+      ctx.fillStyle   = boostActive ? `rgba(200,80,255,${0.38 * flamePulse})` : `rgba(30,140,255,${0.34 * flamePulse})`;
+      const w1 = B * 1.9 + engineModuleCount * 2.2;
+      ctx.fillRect(-3 * B - B * 0.35, -B * 0.62, w1, B * 1.24);
+
       // Mid flame
-      ctx.shadowBlur = 14;
-      ctx.fillStyle  = 'rgba(100, 200, 255, 0.72)';
-      const w2 = B * 1.1 + engineModuleCount * 1.5;
-      ctx.fillRect(-3 * B,          -B * 0.38, w2, B * 0.76);
+      ctx.shadowBlur  = 14;
+      ctx.fillStyle   = boostActive ? `rgba(220,140,255,${0.78 * flamePulse})` : `rgba(100,210,255,${0.78 * flamePulse})`;
+      const w2 = B * 1.15 + engineModuleCount * 1.6;
+      ctx.fillRect(-3 * B, -B * 0.4, w2, B * 0.8);
+
+      // Tip taper — angled triangle for tapered flame look
+      ctx.shadowBlur  = 8;
+      ctx.fillStyle   = boostActive ? `rgba(240,200,255,${0.90 * flamePulse})` : `rgba(160,230,255,${0.90 * flamePulse})`;
+      const tipX = -3 * B - B * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(tipX,           -B * 0.22);
+      ctx.lineTo(-3 * B,        -B * 0.42);
+      ctx.lineTo(-3 * B,         B * 0.42);
+      ctx.lineTo(tipX,           B * 0.22);
+      ctx.closePath();
+      ctx.fill();
+
       // Hot inner core (white-hot)
-      ctx.shadowBlur = 8;
-      ctx.fillStyle  = 'rgba(200, 235, 255, 0.95)';
+      ctx.shadowBlur  = 6;
+      ctx.fillStyle   = `rgba(215,245,255,${0.96 * flamePulse})`;
       ctx.fillRect(-2 * B - B * 0.3, -B * 0.18, B * 0.55, B * 0.36);
+
       ctx.shadowBlur = 0;
       ctx.restore();
     }
@@ -1152,7 +1177,7 @@ export class Player {
       const coreRatio = this.coreHp / this.maxCoreHp;
       // Pulse faster as HP approaches zero
       const pulseFrequencyHz = 1.5 + (1 - coreRatio) * 4;
-      const pulse    = 0.5 + Math.abs(Math.sin(Date.now() * 0.001 * Math.PI * pulseFrequencyHz)) * 0.5;
+      const pulse    = 0.5 + Math.abs(Math.sin(nowMs * 0.001 * Math.PI * pulseFrequencyHz)) * 0.5;
       const alpha    = (1 - coreRatio / 0.45) * 0.55 * pulse;
       const outerRadiusMult = 2.8;
       ctx.save();

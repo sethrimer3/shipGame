@@ -316,24 +316,26 @@ export class World {
     // ── Nebula patches ─────────────────────────────────────────────
     // Sparse coloured clouds; 0–2 per chunk based on RNG
     const nebulaPaletteInner = [
-      'rgba(80,20,160,0.30)',  'rgba(10,90,200,0.28)',  'rgba(160,20,60,0.26)',
-      'rgba(15,130,100,0.24)', 'rgba(110,20,180,0.30)', 'rgba(200,60,10,0.24)',
-      'rgba(10,80,200,0.28)',  'rgba(80,160,40,0.22)',
+      'rgba(110,30,220,0.52)',  'rgba(15,110,240,0.48)',  'rgba(220,30,80,0.46)',
+      'rgba(20,170,130,0.44)', 'rgba(150,30,240,0.52)', 'rgba(240,80,15,0.44)',
+      'rgba(15,100,240,0.48)',  'rgba(100,200,50,0.40)',
+      'rgba(255,140,30,0.42)', 'rgba(60,200,220,0.44)',
     ];
     const nebulaPaletteOuter = [
-      'rgba(60,10,130,0)',  'rgba(5,70,160,0)',   'rgba(130,10,50,0)',
-      'rgba(10,100,80,0)', 'rgba(90,10,150,0)',  'rgba(170,40,5,0)',
-      'rgba(5,60,160,0)',  'rgba(60,130,30,0)',
+      'rgba(70,15,160,0)',  'rgba(8,80,190,0)',   'rgba(160,15,60,0)',
+      'rgba(12,120,95,0)', 'rgba(110,12,180,0)',  'rgba(200,50,8,0)',
+      'rgba(8,72,190,0)',  'rgba(75,160,35,0)',
+      'rgba(200,100,10,0)', 'rgba(30,160,180,0)',
     ];
-    const shouldSpawnNebula = rng() < 0.65;
-    const nebulaCount = shouldSpawnNebula ? (rng() < 0.45 ? 2 : 1) : 0;
+    const shouldSpawnNebula = rng() < 0.72;
+    const nebulaCount = shouldSpawnNebula ? (rng() < 0.50 ? 2 : 1) : 0;
     for (let i = 0; i < nebulaCount; i++) {
       const pi = Math.floor(rng() * nebulaPaletteInner.length);
       nebulaPatches.push({
         x:       baseX + rng() * CHUNK_SIZE,
         y:       baseY + rng() * CHUNK_SIZE,
-        radiusA: 320 + rng() * 480,
-        radiusB: 200 + rng() * 360,
+        radiusA: 380 + rng() * 560,
+        radiusB: 240 + rng() * 420,
         angle:   rng() * Math.PI,
         colorA:  nebulaPaletteInner[pi],
         colorB:  nebulaPaletteOuter[pi],
@@ -1442,18 +1444,29 @@ export class World {
         ctx.save();
         // Subtle breathing animation: each nebula pulses at its own phase
         const nebulaPhase = (nb.x * 0.0017 + nb.y * 0.0013) % (Math.PI * 2);
-        const nebulaPulse = 0.82 + 0.18 * Math.sin(gameTimeSec * 0.22 + nebulaPhase);
+        const nebulaPulse = 0.78 + 0.22 * Math.sin(gameTimeSec * 0.22 + nebulaPhase);
         ctx.globalAlpha = nebulaPulse;
         ctx.translate(nb.x, nb.y);
         ctx.rotate(nb.angle);
         ctx.scale(nb.radiusA, nb.radiusB);
-        const ellipseGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-        ellipseGrad.addColorStop(0,    nb.colorA);
-        ellipseGrad.addColorStop(0.55, nb.colorA);
-        ellipseGrad.addColorStop(1,    nb.colorB);
-        ctx.fillStyle = ellipseGrad;
+        // Outer diffuse halo
+        const outerGrad = ctx.createRadialGradient(0, 0, 0.3, 0, 0, 1);
+        outerGrad.addColorStop(0,    nb.colorA);
+        outerGrad.addColorStop(0.42, nb.colorA);
+        outerGrad.addColorStop(0.72, nb.colorB.replace(/,[\d.]+\)$/, ',0.18)'));
+        outerGrad.addColorStop(1,    nb.colorB);
+        ctx.fillStyle = outerGrad;
         ctx.beginPath();
         ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.fill();
+        // Bright inner core filament
+        ctx.globalAlpha = nebulaPulse * 0.55;
+        const innerGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.38);
+        innerGrad.addColorStop(0,   nb.colorA.replace(/[\d.]+\)$/, '0.9)'));
+        innerGrad.addColorStop(1,   nb.colorA.replace(/[\d.]+\)$/, '0)'));
+        ctx.fillStyle = innerGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 0.38, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }

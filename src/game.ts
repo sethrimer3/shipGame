@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 50;
+const BUILD_NUMBER = 51;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -1860,9 +1860,9 @@ class Game {
       canvas.width * 0.5, canvas.height * 0.5, 0,
       canvas.width * 0.5, canvas.height * 0.5, Math.max(canvas.width, canvas.height) * 0.75,
     );
-    bgGrad.addColorStop(0,   '#0d1022');
-    bgGrad.addColorStop(0.5, '#080c18');
-    bgGrad.addColorStop(1,   '#03050d');
+    bgGrad.addColorStop(0,   '#0e1228');
+    bgGrad.addColorStop(0.4, '#07091a');
+    bgGrad.addColorStop(1,   '#020408');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -1916,24 +1916,37 @@ class Game {
     // ── Shockwave rings (Graviton Pulse + enemy kill rings) ──────────────────────
     for (const ring of this._shockwaveRings) {
       const progress = 1 - ring.life / ring.maxLife; // 0→1
-      const alpha = (1 - progress) * 0.85;
+      const alpha = (1 - progress) * 0.90;
       const ringColor = ring.color ?? '#80c0ff';
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = ring.color ?? 'rgb(140,200,255)';
-      ctx.lineWidth   = 3 + (1 - progress) * 8;
+
+      // Outer diffuse glow band
+      ctx.globalAlpha = alpha * 0.38;
+      ctx.strokeStyle = ringColor;
+      ctx.lineWidth   = 14 + (1 - progress) * 22;
       ctx.shadowColor = ringColor;
-      ctx.shadowBlur  = 14;
+      ctx.shadowBlur  = 28;
       ctx.beginPath();
       ctx.arc(ring.pos.x, ring.pos.y, ring.currentRadius, 0, Math.PI * 2);
       ctx.stroke();
-      // Inner ring (narrower, brighter)
-      ctx.lineWidth  = 1.5;
-      ctx.globalAlpha = alpha * 0.7;
-      ctx.strokeStyle = ring.color ?? 'rgb(200,230,255)';
+
+      // Main bright ring
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = ring.color ?? 'rgb(140,200,255)';
+      ctx.lineWidth   = 2.5 + (1 - progress) * 6;
+      ctx.shadowBlur  = 16;
       ctx.beginPath();
-      ctx.arc(ring.pos.x, ring.pos.y, ring.currentRadius * 0.7, 0, Math.PI * 2);
+      ctx.arc(ring.pos.x, ring.pos.y, ring.currentRadius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Inner ring (narrower, brighter)
+      ctx.lineWidth   = 1.2;
+      ctx.globalAlpha = alpha * 0.75;
+      ctx.strokeStyle = ring.color ?? 'rgb(220,240,255)';
+      ctx.shadowBlur  = 8;
+      ctx.beginPath();
+      ctx.arc(ring.pos.x, ring.pos.y, ring.currentRadius * 0.72, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }

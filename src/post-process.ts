@@ -35,10 +35,11 @@ export class PostProcessRenderer {
     const cy = h * 0.5;
     const r  = Math.sqrt(cx * cx + cy * cy) * 1.05;
 
-    const grad = ctx.createRadialGradient(cx, cy, r * 0.35, cx, cy, r);
+    const grad = ctx.createRadialGradient(cx, cy, r * 0.28, cx, cy, r);
     grad.addColorStop(0,   'rgba(0,0,0,0)');
-    grad.addColorStop(0.6, 'rgba(0,0,0,0)');
-    grad.addColorStop(1,   'rgba(0,0,0,0.72)');
+    grad.addColorStop(0.5, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.78, 'rgba(0,0,0,0.22)');
+    grad.addColorStop(1,   'rgba(0,0,0,0.84)');
 
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
@@ -67,13 +68,13 @@ export class PostProcessRenderer {
     if (!bCtx) return;
 
     bCtx.clearRect(0, 0, w, h);
-    bCtx.filter = 'blur(6px)';
+    bCtx.filter = 'blur(8px)';
     bCtx.drawImage(source, 0, 0);
     bCtx.filter = 'none';
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.30;
     ctx.drawImage(this.bloomCanvas, 0, 0);
     ctx.restore();
   }

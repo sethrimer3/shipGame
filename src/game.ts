@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 51;
+const BUILD_NUMBER = 52;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -1975,7 +1975,7 @@ class Game {
     }
 
     // ── Post-process shaders (vignette, bloom) ─────────────────────
-    this.postProcess.draw(ctx, canvas, this._graphicsConfig);
+    this.postProcess.draw(ctx, canvas, this._graphicsConfig, this.gameTime);
 
     // ── Level-up rings (screen-space, centred on player screen pos) ──
     if (this._levelUpRings.length > 0 && this.player.alive) {

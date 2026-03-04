@@ -16,12 +16,17 @@ export class PostProcessRenderer {
     ctx:    CanvasRenderingContext2D,
     source: HTMLCanvasElement,
     config: GraphicsConfig,
+    gameTimeSec = 0,
   ): void {
     const w = source.width;
     const h = source.height;
 
     if (config.postProcessBloom) {
       this._drawBloom(ctx, source, w, h);
+    }
+
+    if (config.postProcessBloom || config.postProcessVignette) {
+      this._drawCinematicColorWash(ctx, w, h, gameTimeSec);
     }
 
     if (config.postProcessVignette) {
@@ -76,6 +81,39 @@ export class PostProcessRenderer {
     ctx.globalCompositeOperation = 'screen';
     ctx.globalAlpha = 0.30;
     ctx.drawImage(this.bloomCanvas, 0, 0);
+    ctx.restore();
+  }
+
+  // ── Cinematic color wash ──────────────────────────────────────────────────
+  // Adds subtle warm/cool drifting glows to increase depth and contrast.
+  private _drawCinematicColorWash(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    gameTimeSec: number,
+  ): void {
+    const driftX = Math.sin(gameTimeSec * 0.07);
+    const driftY = Math.cos(gameTimeSec * 0.05);
+    const warmX = w * (0.18 + 0.04 * driftX);
+    const warmY = h * (0.76 + 0.03 * driftY);
+    const coolX = w * (0.82 - 0.04 * driftY);
+    const coolY = h * (0.22 + 0.03 * driftX);
+    const radius = Math.max(w, h) * 0.85;
+
+    const warm = ctx.createRadialGradient(warmX, warmY, 0, warmX, warmY, radius);
+    warm.addColorStop(0, 'rgba(255,140,80,0.08)');
+    warm.addColorStop(1, 'rgba(255,140,80,0)');
+
+    const cool = ctx.createRadialGradient(coolX, coolY, 0, coolX, coolY, radius);
+    cool.addColorStop(0, 'rgba(90,170,255,0.07)');
+    cool.addColorStop(1, 'rgba(90,170,255,0)');
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = warm;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = cool;
+    ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
 }

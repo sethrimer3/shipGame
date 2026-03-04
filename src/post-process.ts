@@ -3,6 +3,16 @@
 
 import { GraphicsConfig } from './graphics-settings';
 
+const COLOR_WASH_DRIFT_X_RadPerSec = 0.07;
+const COLOR_WASH_DRIFT_Y_RadPerSec = 0.05;
+const COLOR_WASH_WARM_CENTER_X_RATIO = 0.18;
+const COLOR_WASH_WARM_CENTER_Y_RATIO = 0.76;
+const COLOR_WASH_COOL_CENTER_X_RATIO = 0.82;
+const COLOR_WASH_COOL_CENTER_Y_RATIO = 0.22;
+const COLOR_WASH_DRIFT_X_AMPLITUDE_RATIO = 0.04;
+const COLOR_WASH_DRIFT_Y_AMPLITUDE_RATIO = 0.03;
+const COLOR_WASH_RADIUS_RATIO = 0.85;
+
 export class PostProcessRenderer {
   /** Offscreen canvas used for the bloom blur pass. */
   private bloomCanvas:  HTMLCanvasElement | null = null;
@@ -16,7 +26,7 @@ export class PostProcessRenderer {
     ctx:    CanvasRenderingContext2D,
     source: HTMLCanvasElement,
     config: GraphicsConfig,
-    gameTimeSec = 0,
+    gameTimeSec: number,
   ): void {
     const w = source.width;
     const h = source.height;
@@ -92,13 +102,15 @@ export class PostProcessRenderer {
     h: number,
     gameTimeSec: number,
   ): void {
-    const driftX = Math.sin(gameTimeSec * 0.07);
-    const driftY = Math.cos(gameTimeSec * 0.05);
-    const warmX = w * (0.18 + 0.04 * driftX);
-    const warmY = h * (0.76 + 0.03 * driftY);
-    const coolX = w * (0.82 - 0.04 * driftY);
-    const coolY = h * (0.22 + 0.03 * driftX);
-    const radius = Math.max(w, h) * 0.85;
+    const driftXOffset = Math.sin(gameTimeSec * COLOR_WASH_DRIFT_X_RadPerSec);
+    const driftYOffset = Math.cos(gameTimeSec * COLOR_WASH_DRIFT_Y_RadPerSec);
+    const warmX = w * (COLOR_WASH_WARM_CENTER_X_RATIO + COLOR_WASH_DRIFT_X_AMPLITUDE_RATIO * driftXOffset);
+    const warmY = h * (COLOR_WASH_WARM_CENTER_Y_RATIO + COLOR_WASH_DRIFT_Y_AMPLITUDE_RATIO * driftYOffset);
+    // Intentionally cross-couple drift axes for the cool gradient so warm/cool pools
+    // move against each other and avoid looking mechanically mirrored.
+    const coolX = w * (COLOR_WASH_COOL_CENTER_X_RATIO - COLOR_WASH_DRIFT_X_AMPLITUDE_RATIO * driftYOffset);
+    const coolY = h * (COLOR_WASH_COOL_CENTER_Y_RATIO + COLOR_WASH_DRIFT_Y_AMPLITUDE_RATIO * driftXOffset);
+    const radius = Math.max(w, h) * COLOR_WASH_RADIUS_RATIO;
 
     const warm = ctx.createRadialGradient(warmX, warmY, 0, warmX, warmY, radius);
     warm.addColorStop(0, 'rgba(255,140,80,0.08)');

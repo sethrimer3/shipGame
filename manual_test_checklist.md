@@ -37,3 +37,4 @@
 - [ ] Die twice; verify personal-best stats (kills/level/time/dist) appear on death screen after first run.
 - [ ] Fly close to an enemy (within ~200 units) and verify a pulsing red edge glow appears.
 - [ ] Confirm red glow disappears when moving away from enemies.
+- [ ] Travel away from origin and verify zone label shows distance-to-next-zone (e.g., `→ 1200u`) and updates as you move.

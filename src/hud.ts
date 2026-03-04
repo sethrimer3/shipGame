@@ -17,6 +17,15 @@ function zoneForDist(d: number): { name: string; color: string } {
   return ZONE_THRESHOLDS[0];
 }
 
+function getRemainingDistToNextZoneWorld(d: number): number | null {
+  for (let i = 0; i < ZONE_THRESHOLDS.length; i++) {
+    if (d < ZONE_THRESHOLDS[i].dist) {
+      return ZONE_THRESHOLDS[i].dist - d;
+    }
+  }
+  return null;
+}
+
 /** Renders health / shield bars and coordinates via the DOM overlay. */
 export class HUD {
   private readonly healthBar  = document.getElementById('health-bar')    as HTMLDivElement;
@@ -54,7 +63,13 @@ export class HUD {
     if (this.zoneDisp) {
       const d = len(player.pos);
       const zone = zoneForDist(d);
-      this.zoneDisp.textContent  = `⬡ ${zone.name}`;
+      const distToNextZoneWorld = getRemainingDistToNextZoneWorld(d);
+      if (distToNextZoneWorld !== null) {
+        const roundedDistToNextZoneWorld = Math.ceil(distToNextZoneWorld);
+        this.zoneDisp.innerHTML = `⬡ ${zone.name} <span class="zone-next-distance">→ ${roundedDistToNextZoneWorld}u</span>`;
+      } else {
+        this.zoneDisp.textContent = `⬡ ${zone.name} MAX`;
+      }
       this.zoneDisp.style.color  = zone.color;
     }
 

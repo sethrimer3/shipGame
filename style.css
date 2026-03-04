@@ -133,6 +133,11 @@ body {
   color: #2ecc71;
 }
 
+#zone-display .zone-next-distance {
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: normal;
+}
+
 /* ── Toolbar ── */
 #toolbar-container {
   position: absolute;
@@ -1009,4 +1014,3 @@ body.is-mobile .toolbar-slot {
   width: 44px;
   height: 44px;
 }
-

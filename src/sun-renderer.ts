@@ -4,6 +4,9 @@ import { GraphicsConfig } from './graphics-settings';
 const SHADOW_LENGTH = 3000;
 const SUN_RAYS_BASE_RADIUS_MULT = 6;
 const SUN_RAYS_NEAR_FADE_RADIUS_MULT = 10;
+const SUN_CORE_RADIUS_MULT = 0.39;
+const SUN_RIM_GLOW_INNER_RADIUS_MULT = 0.88;
+const SUN_RIM_GLOW_OUTER_RADIUS_MULT = 1.35;
 
 type ShadowQuad = {
   sv1x: number; sv1y: number;
@@ -59,8 +62,8 @@ export class SunRenderer {
             pos.x, pos.y, animatedRadius * 0.25,
             pos.x, pos.y, animatedRadius * 2.8
         );
-        corona.addColorStop(0,    'rgba(255,246,210,0.52)');
-        corona.addColorStop(0.28, 'rgba(255,207,116,0.35)');
+        corona.addColorStop(0,    'rgba(255,246,210,0.58)');
+        corona.addColorStop(0.28, 'rgba(255,207,116,0.42)');
         corona.addColorStop(1,    'rgba(255,170,90,0)');
         ctx.fillStyle = corona;
         ctx.beginPath();
@@ -100,7 +103,7 @@ export class SunRenderer {
         ctx.restore(); // end disc clip
 
         // Hard bright core
-        const coreRadius = animatedRadius * 0.34 * corePulseAmount;
+        const coreRadius = animatedRadius * SUN_CORE_RADIUS_MULT * corePulseAmount;
         const hardCore = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, coreRadius);
         hardCore.addColorStop(0,    'rgba(255,255,255,1)');
         hardCore.addColorStop(0.30, 'rgba(255,255,248,0.98)');
@@ -115,6 +118,19 @@ export class SunRenderer {
         ctx.fillStyle = 'rgba(255,255,255,0.96)';
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, animatedRadius * 0.16 * corePulseAmount, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Thin rim glow to give the photosphere a sharper cinematic edge.
+        const rimGlow = ctx.createRadialGradient(
+            pos.x, pos.y, animatedRadius * SUN_RIM_GLOW_INNER_RADIUS_MULT,
+            pos.x, pos.y, animatedRadius * SUN_RIM_GLOW_OUTER_RADIUS_MULT,
+        );
+        rimGlow.addColorStop(0, 'rgba(255,250,220,0)');
+        rimGlow.addColorStop(0.55, 'rgba(255,228,156,0.24)');
+        rimGlow.addColorStop(1, 'rgba(255,186,110,0)');
+        ctx.fillStyle = rimGlow;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, animatedRadius * SUN_RIM_GLOW_OUTER_RADIUS_MULT, 0, Math.PI * 2);
         ctx.fill();
 
         // Surface gradient overlay
@@ -147,7 +163,7 @@ export class SunRenderer {
         for (let i = 0; i < bloomSteps; i++) {
             const t = i / Math.max(1, bloomSteps - 1);
             const radius = screenRadius * (1.15 + t * 2.65);
-            const alpha = 0.2 * (1 - t);
+            const alpha = 0.24 * (1 - t);
             const radiusBucket = Math.round(radius / 16) * 16;
             const innerRadius = radiusBucket * 0.22;
 

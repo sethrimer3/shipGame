@@ -1597,26 +1597,52 @@ export class World {
     const now     = Date.now();
     const nowSec  = now * 0.001;
     for (const p of this.pickups) {
-      const fade  = Math.min(1, p.lifetime / 3); // fade out last 3 s
-      const spin  = nowSec * 1.8 + (p.pos.x + p.pos.y) * 0.02; // per-pickup phase offset
-      const pulse = 0.72 + Math.sin(nowSec * 3.0 + p.pos.x * 0.01) * 0.18;
-      const props = MATERIAL_PROPS[p.material];
-      const S     = 5.5; // half-size of the diamond
+      const fade     = Math.min(1, p.lifetime / 3); // fade out last 3 s
+      const spin     = nowSec * 1.8 + (p.pos.x + p.pos.y) * 0.02; // per-pickup phase offset
+      const pulse    = 0.72 + Math.sin(nowSec * 3.0 + p.pos.x * 0.01) * 0.18;
+      const twinkle  = 0.5 + Math.sin(nowSec * 9.0 + p.pos.y * 0.03) * 0.5;
+      const props    = MATERIAL_PROPS[p.material];
+      const rarity01 = Math.min(1, Math.max(0, props.rarity));
+      const S        = 5.5; // half-size of the diamond
+      const haloR    = S * (1.8 + rarity01 * 0.9);
+      const orbitR   = S * (2.2 + rarity01 * 0.6);
       ctx.save();
       ctx.globalAlpha = fade * pulse;
+      ctx.globalCompositeOperation = 'lighter';
       // Soft outer halo
       ctx.shadowColor = props.color;
-      ctx.shadowBlur  = 14;
+      ctx.shadowBlur  = 16 + rarity01 * 10;
       ctx.strokeStyle = props.color;
-      ctx.lineWidth   = 1.5;
+      ctx.lineWidth   = 1.3 + rarity01 * 0.9;
       ctx.beginPath();
-      ctx.arc(p.pos.x, p.pos.y, S * 1.9, 0, Math.PI * 2);
+      ctx.arc(p.pos.x, p.pos.y, haloR, 0, Math.PI * 2);
       ctx.stroke();
-      // Rotating diamond core
+      // Secondary orbit ring for richer space-readability
+      ctx.globalAlpha *= 0.6;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, haloR + 3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = fade * pulse;
+      // Orbiting sparkles
+      const orbitA = spin * 1.35;
+      const sx1 = p.pos.x + Math.cos(orbitA) * orbitR;
+      const sy1 = p.pos.y + Math.sin(orbitA) * orbitR;
+      const sx2 = p.pos.x + Math.cos(orbitA + Math.PI) * orbitR;
+      const sy2 = p.pos.y + Math.sin(orbitA + Math.PI) * orbitR;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      ctx.arc(sx1, sy1, 1.1 + twinkle * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = fade * (0.45 + twinkle * 0.35);
+      ctx.beginPath();
+      ctx.arc(sx2, sy2, 0.9 + twinkle * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Rotating crystal core
+      ctx.globalAlpha = fade * pulse;
       ctx.translate(p.pos.x, p.pos.y);
       ctx.rotate(spin);
       ctx.fillStyle   = props.color;
-      ctx.shadowBlur  = 8;
+      ctx.shadowBlur  = 9 + rarity01 * 5;
       ctx.beginPath();
       ctx.moveTo(0,  -S);
       ctx.lineTo(S,   0);
@@ -1624,9 +1650,20 @@ export class World {
       ctx.lineTo(-S,  0);
       ctx.closePath();
       ctx.fill();
-      // Bright inner highlight
+      // Counter-rotating inner crystal
+      ctx.rotate(-spin * 1.9);
+      const innerS = S * (0.58 + rarity01 * 0.18);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.beginPath();
+      ctx.moveTo(0,      -innerS);
+      ctx.lineTo(innerS,  0);
+      ctx.lineTo(0,       innerS);
+      ctx.lineTo(-innerS, 0);
+      ctx.closePath();
+      ctx.fill();
+      // Bright center highlight
       ctx.shadowBlur  = 0;
-      ctx.fillStyle   = 'rgba(255,255,255,0.55)';
+      ctx.fillStyle   = 'rgba(255,255,255,0.62)';
       const h = S * 0.35;
       ctx.beginPath();
       ctx.moveTo(0, -h);
@@ -1638,11 +1675,11 @@ export class World {
       ctx.restore();
       // Label
       ctx.save();
-      ctx.globalAlpha = fade * 0.85;
+      ctx.globalAlpha = fade * 0.9;
       ctx.fillStyle   = props.color;
       ctx.font        = '9px Courier New';
       ctx.textAlign   = 'center';
-      ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 12);
+      ctx.fillText(`${p.material} ×${p.qty}`, p.pos.x, p.pos.y - 13);
       ctx.restore();
     }
 
@@ -1823,4 +1860,3 @@ export class World {
     return result;
   }
 }
-

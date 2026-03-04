@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 52;
+const BUILD_NUMBER = 53;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -191,6 +191,10 @@ const MODULE_REBUILD_COSTS: Partial<Record<ShipModuleType, ResourceStack[]>> = {
   weapon:      [{ material: Material.Iron, quantity: 3 }],
   miningLaser: [{ material: Material.Iron, quantity: 2 }, { material: Material.Crystal, quantity: 1 }],
 };
+
+// Covers two full rebuilds of the starter layout (9 hull, 2 engine, 1 miningLaser).
+const BASE_STARTING_IRON = 52;
+const BASE_STARTING_CRYSTAL = 2;
 
 class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -392,6 +396,7 @@ class Game {
     const miningLaser = TOOLBAR_ITEM_DEFS['mining_laser'];
     this.toolbar.addItem(miningLaser);
     this.player.equipItem(0, miningLaser);
+    this._addStartingResourceBonuses();
     this.toolbar.renderDOM();
 
     // Wire up settings panel controls
@@ -1641,9 +1646,9 @@ class Game {
   /** Add starting resource bonuses to inventory (called after inventory reset). */
   private _addStartingResourceBonuses(): void {
     const level = (id: GemBonusId): number => this._gemBonusLevels[id] ?? 0;
-    this.player.addResource(Material.Iron,    level('iron_cache')        * GEM_BONUS_IRON_PER_LEVEL);
+    this.player.addResource(Material.Iron,    BASE_STARTING_IRON + level('iron_cache')        * GEM_BONUS_IRON_PER_LEVEL);
     this.player.addResource(Material.Gold,    level('gold_reserve')      * GEM_BONUS_GOLD_PER_LEVEL);
-    this.player.addResource(Material.Crystal, level('crystal_stockpile') * GEM_BONUS_CRYSTAL_PER_LEVEL);
+    this.player.addResource(Material.Crystal, BASE_STARTING_CRYSTAL + level('crystal_stockpile') * GEM_BONUS_CRYSTAL_PER_LEVEL);
   }
 
   /** Save personal-best stats to localStorage when the current run beats any record. */

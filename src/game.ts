@@ -133,7 +133,7 @@ const MIN_TOOLTIP_WIDTH     = 130; // minimum tooltip box width in pixels
 /** Seconds within which a second U press counts as a double-press for module upgrade. */
 const UPGRADE_KEY_DOUBLE_PRESS_WINDOW = 0.8;
 
-const BUILD_NUMBER = 56;
+const BUILD_NUMBER = 58;
 
 const REBIRTH_FLASH_DURATION_SEC = 0.28;
 const REBIRTH_BUILD_DURATION_SEC = 1.4;
@@ -1052,6 +1052,7 @@ class Game {
         item.draggable = true;
         item.dataset.module = mod.type;
         item.style.borderColor = mod.color;
+        item.style.setProperty('--editor-item-index', String(paletteRoot.childElementCount));
         item.innerHTML = `
           <div class="editor-palette-header">
             <span class="editor-palette-name" style="color:${mod.color}">${mod.name}</span>

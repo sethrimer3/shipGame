@@ -53,7 +53,7 @@ body {
 }
 
 .bar-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: bold;
   letter-spacing: 1px;
   width: 22px;
@@ -185,7 +185,7 @@ body {
   position: absolute;
   top: 2px;
   left: 4px;
-  font-size: 9px;
+  font-size: 10px;
   color: rgba(255, 255, 255, 0.4);
 }
 
@@ -195,7 +195,7 @@ body {
 }
 
 .toolbar-slot .slot-name {
-  font-size: 8px;
+  font-size: 9px;
   color: rgba(255, 255, 255, 0.7);
   text-align: center;
   max-width: 52px;
@@ -213,7 +213,7 @@ body {
 }
 
 #toolbar-hint {
-  font-size: 10px;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.3);
   text-align: center;
 }
@@ -235,6 +235,7 @@ body {
   overflow-y: auto;
   pointer-events: all;
   z-index: 100;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.48), 0 0 24px rgba(100, 150, 255, 0.12);
 }
 
 #crafting-panel h2 {
@@ -378,6 +379,12 @@ body {
   width: 400px;
   pointer-events: all;
   z-index: 100;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.48), 0 0 24px rgba(100, 150, 255, 0.12);
+}
+
+#crafting-panel:not(.hidden),
+#settings-panel:not(.hidden) {
+  animation: menu-panel-enter 0.24s ease-out;
 }
 
 #settings-panel h2 {
@@ -545,7 +552,7 @@ body {
   --editor-shift-x: 0px;
   transform: translate(calc(-50% + var(--editor-shift-x)), -50%) scale(var(--panel-scale));
   transform-origin: center center;
-  transition: transform 0.28s ease;
+  transition: transform 0.28s ease, box-shadow 0.25s ease, border-color 0.25s ease;
   background: rgba(8, 18, 26, 0.96);
   border: 1px solid rgba(120, 220, 255, 0.45);
   border-radius: 8px;
@@ -553,6 +560,25 @@ body {
   width: 920px;
   pointer-events: all;
   z-index: 100;
+  box-shadow: 0 20px 58px rgba(0, 0, 0, 0.56), 0 0 30px rgba(126, 207, 255, 0.15);
+}
+
+#ship-editor-panel:not(.hidden) {
+  animation: ship-editor-panel-enter 0.3s ease-out;
+}
+
+#ship-editor-panel:not(.hidden) .editor-palette-window,
+#ship-editor-panel:not(.hidden) .editor-grid-window {
+  animation: ship-editor-window-enter 0.34s ease-out;
+}
+
+#ship-editor-panel:not(.hidden) .editor-palette-item {
+  animation: ship-editor-item-enter 0.28s ease-out;
+  animation-delay: calc(var(--editor-item-index, 0) * 0.02s);
+}
+
+#ship-editor-panel:not(.hidden) #ship-editor-grid {
+  animation: ship-editor-grid-enter 0.32s ease-out;
 }
 
 
@@ -632,6 +658,10 @@ body {
   border-radius: 8px;
 }
 
+#ship-editor-save-confirm:not(.hidden) {
+  animation: ship-editor-confirm-enter 0.2s ease-out;
+}
+
 .save-confirm-title {
   font-size: 20px;
   color: #d9f2ff;
@@ -703,6 +733,20 @@ body.ship-editor-layout-open #ship-editor-panel {
   font-size: 10px;
   color: rgba(255,255,255,0.75);
   user-select: none;
+  transition: all 0.15s ease;
+}
+
+.editor-grid-cell:hover {
+  border-color: rgba(126, 207, 255, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(126, 207, 255, 0.24);
+}
+
+.editor-grid-cell:focus-visible {
+  border-color: rgba(126, 207, 255, 0.5);
+  box-shadow: 0 0 10px rgba(126, 207, 255, 0.24);
+  outline: 2px solid rgba(126, 207, 255, 0.65);
+  outline-offset: 1px;
 }
 
 .editor-grid-cell.core {
@@ -714,6 +758,7 @@ body.ship-editor-layout-open #ship-editor-panel {
 
 .editor-grid-cell.drop-target {
   outline: 2px dashed rgba(126, 207, 255, 0.8);
+  box-shadow: 0 0 16px rgba(126, 207, 255, 0.4);
 }
 
 .editor-grid-cell.filled.hull { background: rgba(46, 204, 113, 0.35); }
@@ -748,6 +793,23 @@ body.ship-editor-layout-open #ship-editor-panel {
   padding: 8px;
   cursor: grab;
   pointer-events: all;
+  transition: all 0.15s ease;
+}
+
+.editor-palette-item:hover {
+  transform: translateY(-1px);
+  background: rgba(126, 207, 255, 0.08);
+  border-color: rgba(126, 207, 255, 0.6);
+  box-shadow: 0 0 14px rgba(126, 207, 255, 0.2);
+}
+
+.editor-palette-item:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(126, 207, 255, 0.08);
+  border-color: rgba(126, 207, 255, 0.6);
+  box-shadow: 0 0 14px rgba(126, 207, 255, 0.2);
+  outline: 2px solid rgba(126, 207, 255, 0.7);
+  outline-offset: 1px;
 }
 
 .editor-palette-item:active { cursor: grabbing; }
@@ -779,6 +841,7 @@ body.ship-editor-layout-open #ship-editor-panel {
   font-size: 12px;
   cursor: pointer;
   pointer-events: all;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
 #confirm-ship-editor {
@@ -789,6 +852,14 @@ body.ship-editor-layout-open #ship-editor-panel {
 
 #confirm-ship-editor:hover {
   background: rgba(80, 255, 140, 0.28);
+  transform: translateY(-1px);
+}
+
+#confirm-ship-editor:focus-visible {
+  background: rgba(80, 255, 140, 0.28);
+  transform: translateY(-1px);
+  outline: 2px solid rgba(80, 255, 140, 0.7);
+  outline-offset: 1px;
 }
 
 #close-ship-editor {
@@ -799,6 +870,78 @@ body.ship-editor-layout-open #ship-editor-panel {
 
 #close-ship-editor:hover {
   background: rgba(255, 80, 80, 0.3);
+  transform: translateY(-1px);
+}
+
+#close-ship-editor:focus-visible {
+  background: rgba(255, 80, 80, 0.3);
+  transform: translateY(-1px);
+  outline: 2px solid rgba(255, 80, 80, 0.7);
+  outline-offset: 1px;
+}
+
+@keyframes menu-panel-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 10px)) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes ship-editor-panel-enter {
+  from {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--editor-shift-x)), calc(-50% + 12px)) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--editor-shift-x)), -50%) scale(var(--panel-scale));
+  }
+}
+
+@keyframes ship-editor-window-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ship-editor-item-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ship-editor-grid-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ship-editor-confirm-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 body.ship-editor-layout-open #crafting-panel {

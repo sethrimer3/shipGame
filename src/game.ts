@@ -1052,6 +1052,7 @@ class Game {
         item.draggable = true;
         item.dataset.module = mod.type;
         item.style.borderColor = mod.color;
+        item.style.setProperty('--editor-item-index', String(paletteRoot.childElementCount));
         item.innerHTML = `
           <div class="editor-palette-header">
             <span class="editor-palette-name" style="color:${mod.color}">${mod.name}</span>
